@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+offscreen_test_doc.txt
+.DS_Store

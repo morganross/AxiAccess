@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A11y-SSH — Universal Remote Desktop Accessibility Observer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #090d16;
+      color: #e2e8f0;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    .pulse-dot {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .35; }
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- TOP HEADER BAR -->
+  <header class="h-14 border-b border-slate-800 bg-slate-900/90 px-5 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 font-bold mono">
+        A11y
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-semibold text-sm tracking-tight text-white">A11y-SSH: Semantic Desktop Observer</h1>
+          <span class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
+            Strict Read-Only
+          </span>
+          <span id="platformBadge" class="text-[11px] mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+            Windows UIA
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-400">Sidechannel OS Accessibility &amp; Unrendered Off-Screen Text Extractor for LLMs</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2.5">
+      <!-- Screen Reader Wakeup Flag Toggle -->
+      <button id="wakeupBtn" onclick="toggleWakeup()"
+        class="text-xs px-3 py-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition flex items-center gap-1.5"
+        title="Sets SPI_SETSCREENREADER=1 so Chrome, Firefox, and Electron apps expose deep accessibility & TextPattern buffers">
+        <span id="wakeupDot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>Electron/Browser Wakeup: <strong id="wakeupState">ON</strong></span>
+      </button>
+
+      <!-- One-Click Unrendered Text Verification Test -->
+      <button onclick="spawnTestPad()" id="spawnTestBtn"
+        class="text-xs px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition shadow-sm flex items-center gap-1.5"
+        title="Spawns a 250-line Notepad document and extracts lines 26-250 without scrolling!">
+        <span>🧪 Launch 250-Line Off-Screen Test</span>
+      </button>
+
+      <button onclick="loadWindows()"
+        class="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+        ↻ Refresh Desktop
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT SIDEBAR: LIVE DESKTOP WINDOWS -->
+    <aside class="w-80 border-r border-slate-800 bg-slate-900/50 flex flex-col shrink-0">
+      <div class="p-3 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Live Desktop Windows</h2>
+          <p id="windowCountMeta" class="text-[11px] text-slate-500 mono mt-0.5">Scanning WinSta0\Default...</p>
+        </div>
+        <label class="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+          <input type="checkbox" id="autoPollToggle" onchange="toggleAutoPoll()" class="rounded bg-slate-800 border-slate-700 text-indigo-500" />
+          Auto-sync
+        </label>
+      </div>
+
+      <div class="p-2 border-b border-slate-800/80">
+        <input id="windowFilterInput" type="text" oninput="renderWindowList()"
+          placeholder="Filter by title, app, or PID..."
+          class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
+      </div>
+
+      <div id="windowList" class="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+        <!-- Populated dynamically -->
+      </div>
+    </aside>
+
+    <!-- CENTER / RIGHT PANEL: SELECTED WINDOW INSPECTOR -->
+    <main class="flex-1 flex flex-col bg-slate-950 overflow-hidden select-text">
+
+      <!-- STATS METRIC BAR -->
+      <div class="grid grid-cols-5 gap-3 p-3 border-b border-slate-800 bg-slate-900/40 shrink-0">
+        <div class="bg-slate-900/90 border border-slate-800/90 rounded-lg p-2.5">
+          <div class="text-[11px] text-slate-400">Selected Target</div>
+          <div id="statTargetTitle" class="text-xs font-semibold text-white truncate mt-0.5">Select a window...</div>
+          <div id="statTargetMeta" class="text-[10px] text-slate-500 mono mt-0.5">—</div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800/90 rounded-lg p-2.5">
+          <div class="text-[11px] text-slate-400">Tree Pruning Ratio</div>
+          <div id="statPruning" class="text-sm font-bold text-indigo-400 mono mt-0.5">—</div>
+          <div id="statPruningSub" class="text-[10px] text-slate-500 mono mt-0.5">Raw UIA → Semantic</div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800/90 rounded-lg p-2.5">
+          <div class="text-[11px] text-slate-400">Total Extracted Text</div>
+          <div id="statTotalChars" class="text-sm font-bold text-emerald-400 mono mt-0.5">—</div>
+          <div id="statTotalBuffers" class="text-[10px] text-slate-500 mono mt-0.5">via TextPattern / ValuePattern</div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-emerald-500/30 rounded-lg p-2.5">
+          <div class="text-[11px] text-emerald-300 font-medium">Unrendered / Off-Screen Text</div>
+          <div id="statOffscreenChars" class="text-sm font-bold text-emerald-400 mono mt-0.5">—</div>
+          <div class="text-[10px] text-emerald-500/80 mono mt-0.5">Captured without scrolling!</div>
+        </div>
+
+        <div class="bg-slate-900/90 border border-slate-800/90 rounded-lg p-2.5">
+          <div class="text-[11px] text-slate-400">LLM Context Payload</div>
+          <div id="statTokens" class="text-sm font-bold text-amber-400 mono mt-0.5">—</div>
+          <div id="statScanTime" class="text-[10px] text-slate-500 mono mt-0.5">Latency: — ms</div>
+        </div>
+      </div>
+
+      <!-- NAVIGATION TABS -->
+      <div class="h-10 border-b border-slate-800 bg-slate-900/70 px-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-1">
+          <button onclick="switchTab('yaml')" id="tabBtn-yaml"
+            class="tab-btn px-3 py-1.5 rounded text-xs font-medium bg-indigo-600 text-white">
+            1. LLM Semantic Snapshot (YAML)
+          </button>
+          <button onclick="switchTab('buffers')" id="tabBtn-buffers"
+            class="tab-btn px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white">
+            2. Deep Text &amp; Off-Screen Buffers <span id="bufferCountBadge" class="ml-1 px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] mono">0</span>
+          </button>
+          <button onclick="switchTab('tree')" id="tabBtn-tree"
+            class="tab-btn px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white">
+            3. Interactive Element Hierarchy
+          </button>
+          <button onclick="switchTab('arch')" id="tabBtn-arch"
+            class="tab-btn px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white">
+            4. Cross-Platform &amp; SSH/MCP Guide
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <label class="text-[11px] text-slate-300 mono flex items-center gap-1.5 bg-slate-800/90 border border-indigo-500/40 rounded px-2 py-0.5">
+            <span class="text-indigo-400 font-semibold">LLM Verbosity:</span>
+            <select id="verbositySelect" onchange="loadVerbosityPreview()" class="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none">
+              <option value="glance">L1: glance (~80 tok — windows + summary)</option>
+              <option value="text_only">L2: text_only (pure extracted text buffers)</option>
+              <option value="interactive">L3: interactive (buttons/inputs/links only)</option>
+              <option value="compact" selected>L4: compact (pruned YAML + previews)</option>
+              <option value="full">L5: full (YAML + 100% off-screen text inline)</option>
+            </select>
+          </label>
+          <label class="text-[11px] text-slate-400 mono flex items-center gap-1">
+            Depth:
+            <select id="depthSelect" onchange="reInspectCurrent()" class="bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white">
+              <option value="6">6</option>
+              <option value="9" selected>9</option>
+              <option value="12">12</option>
+              <option value="16">16</option>
+            </select>
+          </label>
+          <button onclick="copySnapshotForLLM()" id="copyBtn"
+            class="text-xs px-2.5 py-1 rounded bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 transition mono">
+            📋 Copy LLM Prompt Payload
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB CONTENT AREA -->
+      <div class="flex-1 overflow-y-auto p-4 relative">
+
+        <!-- LOADING OVERLAY -->
+        <div id="loadingOverlay" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-20 flex items-center justify-center">
+          <div class="bg-slate-900 border border-slate-700 rounded-lg px-5 py-4 flex items-center gap-3 shadow-xl">
+            <div class="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+            <span id="loadingMsg" class="text-xs text-slate-200 mono">Querying OS Accessibility Tree &amp; TextPattern ranges...</span>
+          </div>
+        </div>
+
+        <!-- TAB 1: LLM SEMANTIC SNAPSHOT (YAML) -->
+        <div id="tab-yaml" class="h-full flex flex-col">
+          <div class="mb-2 flex items-center justify-between gap-2 text-xs text-slate-400 flex-wrap">
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">Live API Endpoint:</span>
+              <a id="liveApiUrl" href="/api/llm?target=all&verbosity=compact&format=text" target="_blank"
+                class="mono text-[11px] px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 hover:text-white transition">
+                GET /api/llm?target=all&amp;verbosity=compact&amp;format=text ↗
+              </a>
+              <span id="verbosityTokenBadge" class="mono text-[11px] px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                — tokens
+              </span>
+            </div>
+            <input id="yamlSearchInput" type="text" oninput="highlightYamlSearch()" placeholder="Search inside payload..."
+              class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 w-64 focus:outline-none focus:border-indigo-500" />
+          </div>
+          <pre id="yamlOutput" class="flex-1 bg-slate-900/90 border border-slate-800 rounded-lg p-4 text-xs mono text-slate-200 overflow-auto leading-relaxed whitespace-pre-wrap">Select any window on the left to extract its live OS Accessibility tree and off-screen text buffers.</pre>
+        </div>
+
+        <!-- TAB 2: DEEP TEXT & OFF-SCREEN BUFFERS -->
+        <div id="tab-buffers" class="hidden space-y-4">
+          <div class="bg-emerald-950/30 border border-emerald-500/30 rounded-lg p-3 text-xs text-emerald-200 flex items-center justify-between">
+            <div>
+              <strong>How Unrendered / Off-Screen Text Extraction Works:</strong>
+              When an element exposes <code class="mono bg-slate-900 px-1.5 py-0.5 rounded">IUIAutomationTextPattern</code> (Windows),
+              <code class="mono bg-slate-900 px-1.5 py-0.5 rounded">kAXStringForRange</code> (macOS), or
+              <code class="mono bg-slate-900 px-1.5 py-0.5 rounded">org.a11y.atspi.Text</code> (Linux), we query both the
+              <strong>Full DocumentRange</strong> and the <strong>Visible Viewport Range</strong>—extracting text that hasn't even been painted to the screen yet!
+            </div>
+          </div>
+          <div id="buffersContainer" class="space-y-4">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- TAB 3: INTERACTIVE TREE VIEW -->
+        <div id="tab-tree" class="hidden">
+          <div id="treeContainer" class="bg-slate-900/70 border border-slate-800 rounded-lg p-4 text-xs mono space-y-1">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- TAB 4: CROSS-PLATFORM ARCHITECTURE & MCP/SSH -->
+        <div id="tab-arch" class="hidden space-y-4">
+          <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-white mb-1">Cross-Platform OS Accessibility Matrix (Windows / macOS / Linux)</h3>
+            <p class="text-xs text-slate-400 mb-3">
+              How this exact same semantic tree + off-screen text extraction pipeline maps across all three desktop operating systems:
+            </p>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="border-b border-slate-800 text-slate-400 bg-slate-950/60">
+                    <th class="p-2.5">OS</th>
+                    <th class="p-2.5">Status</th>
+                    <th class="p-2.5">Native Accessibility API</th>
+                    <th class="p-2.5">Off-Screen / Unrendered Text API</th>
+                    <th class="p-2.5">Electron / Browser Wakeup Signal</th>
+                    <th class="p-2.5">Remote SSH / Session Bridge</th>
+                  </tr>
+                </thead>
+                <tbody id="archTableBody" class="divide-y divide-slate-800/70 mono text-[11px]">
+                  <!-- Populated from /api/architecture -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+              <h4 class="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-2">Remote LLM Connection (SSH / HTTP API)</h4>
+              <p class="text-xs text-slate-300 mb-2">
+                Any remote LLM agent or machine can query this observer over SSH port-forwarding or standard HTTP JSON endpoints:
+              </p>
+              <pre class="bg-slate-950 border border-slate-800 rounded p-3 text-[11px] mono text-emerald-300 overflow-x-auto"># 1. List all open desktop windows (including background/minimized)
+curl http://127.0.0.1:8765/api/windows
+
+# 2. Extract pruned LLM YAML + full off-screen text buffers for a window
+curl "http://127.0.0.1:8765/api/inspect/ChatGPT?max_depth=9"
+
+# 3. Stream live desktop change events over WebSocket
+wscat -c ws://127.0.0.1:8765/ws/events</pre>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+              <h4 class="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-2">Key Technical Breakthroughs Implemented Here</h4>
+              <ul class="text-xs text-slate-300 space-y-2 list-disc list-inside">
+                <li><strong>WinSta0\Default Desktop Bridge:</strong> Uses <code class="mono text-indigo-300">OpenDesktopW("Default") + SetThreadDesktop</code> so background daemons, SSH sessions, and sandboxed agents can still inspect the user's live interactive GUI desktop.</li>
+                <li><strong>UIA CacheRequest Batching:</strong> Fetches control role, name, focus, offscreen state, and pattern availability in a single cross-process COM call per node.</li>
+                <li><strong>Zero Focus / Zero Input Guarantee:</strong> Never calls <code class="mono text-rose-300">SetFocus</code>, <code class="mono text-rose-300">Invoke</code>, or <code class="mono text-rose-300">Scroll</code>—100% passive observation.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- BOTTOM LIVE EVENT STREAM (TAIL -F OF THE DESKTOP) -->
+      <div class="h-36 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0">
+        <div class="px-4 py-1.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-300 mono">Live Desktop Sidechannel Stream (/ws/events)</span>
+          </div>
+          <button onclick="clearEventLog()" class="text-[11px] text-slate-500 hover:text-slate-300 mono">Clear Log</button>
+        </div>
+        <div id="eventStreamLog" class="flex-1 overflow-y-auto p-2.5 space-y-1 mono text-[11px]">
+          <!-- Live WebSocket events appear here -->
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    let allWindows = [];
+    let selectedHwnd = null;
+    let currentSnapshot = null;
+    let wakeupEnabled = true;
+    let autoPollTimer = null;
+
+    async function loadWindows(autoSelectFirst = false) {
+      try {
+        const res = await fetch('/api/windows');
+        const data = await res.json();
+        allWindows = data.windows || [];
+        wakeupEnabled = !!data.screen_reader_flag;
+        updateWakeupUI();
+
+        document.getElementById('windowCountMeta').textContent =
+          `${allWindows.length} windows (${data.scan_time_ms}ms scan)`;
+        renderWindowList();
+
+        if (autoSelectFirst && allWindows.length > 0 && !selectedHwnd) {
+          inspectWindow(allWindows[0].hwnd);
+        }
+      } catch (err) {
+        console.error('Failed to load windows:', err);
+      }
+    }
+
+    function updateWakeupUI() {
+      const stateEl = document.getElementById('wakeupState');
+      const dotEl = document.getElementById('wakeupDot');
+      if (wakeupEnabled) {
+        stateEl.textContent = 'ON';
+        dotEl.className = 'w-2 h-2 rounded-full bg-emerald-400';
+      } else {
+        stateEl.textContent = 'OFF';
+        dotEl.className = 'w-2 h-2 rounded-full bg-slate-500';
+      }
+    }
+
+    async function toggleWakeup() {
+      const next = !wakeupEnabled;
+      const res = await fetch('/api/wakeup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next })
+      });
+      const data = await res.json();
+      wakeupEnabled = !!data.screen_reader_flag;
+      updateWakeupUI();
+      if (selectedHwnd) reInspectCurrent();
+    }
+
+    function renderWindowList() {
+      const filter = (document.getElementById('windowFilterInput').value || '').toLowerCase();
+      const container = document.getElementById('windowList');
+      container.innerHTML = '';
+
+      const filtered = allWindows.filter(w =>
+        w.title.toLowerCase().includes(filter) ||
+        w.process.toLowerCase().includes(filter) ||
+        String(w.pid).includes(filter)
+      );
+
+      for (const w of filtered) {
+        const isSelected = String(w.hwnd) === String(selectedHwnd);
+        const div = document.createElement('div');
+        div.className = `p-3 cursor-pointer transition hover:bg-slate-800/60 ${
+          isSelected ? 'bg-indigo-950/60 border-l-4 border-indigo-500' : ''
+        }`;
+        div.onclick = () => inspectWindow(w.hwnd);
+
+        const stateBadges = [];
+        if (w.focused) {
+          stateBadges.push(`<span class="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] mono">Focused</span>`);
+        }
+        if (w.minimized) {
+          stateBadges.push(`<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] mono">Minimized</span>`);
+        } else if (w.offscreen) {
+          stateBadges.push(`<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] mono">Offscreen</span>`);
+        } else {
+          stateBadges.push(`<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[10px] mono">Visible</span>`);
+        }
+
+        div.innerHTML = `
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span class="text-[11px] font-semibold text-indigo-300 mono truncate">${escapeHtml(w.process)}</span>
+            <div class="flex items-center gap-1 shrink-0">${stateBadges.join('')}</div>
+          </div>
+          <div class="text-xs font-medium text-slate-100 truncate" title="${escapeHtml(w.title)}">${escapeHtml(w.title)}</div>
+          <div class="text-[10px] text-slate-500 mono mt-1 flex items-center justify-between">
+            <span>PID: ${w.pid} · HWND: ${w.hwnd}</span>
+            <span>${w.bounds.width}×${w.bounds.height}</span>
+          </div>
+        `;
+        container.appendChild(div);
+      }
+    }
+
+    async function inspectWindow(hwnd) {
+      selectedHwnd = hwnd;
+      renderWindowList();
+
+      const depth = document.getElementById('depthSelect').value || 9;
+      const overlay = document.getElementById('loadingOverlay');
+      overlay.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/inspect/${hwnd}?max_depth=${depth}&max_nodes=400`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Inspection failed');
+        }
+        currentSnapshot = await res.json();
+        renderSnapshot(currentSnapshot);
+      } catch (err) {
+        document.getElementById('yamlOutput').textContent = `Error inspecting window ${hwnd}: ${err.message}`;
+      } finally {
+        overlay.classList.add('hidden');
+      }
+    }
+
+    function reInspectCurrent() {
+      if (selectedHwnd) inspectWindow(selectedHwnd);
+    }
+
+    function renderSnapshot(snap) {
+      const w = snap.window;
+      const s = snap.stats;
+
+      document.getElementById('statTargetTitle').textContent = w.title;
+      document.getElementById('statTargetMeta').textContent = `${w.process} (PID ${w.pid})`;
+
+      document.getElementById('statPruning').textContent = `${s.compression_pct}% Compressed`;
+      document.getElementById('statPruningSub').textContent = `${s.raw_nodes} raw → ${s.semantic_nodes} semantic nodes`;
+
+      document.getElementById('statTotalChars').textContent = `${s.total_extracted_chars.toLocaleString()} chars`;
+      document.getElementById('statTotalBuffers').textContent = `across ${s.text_buffers_found} text buffer(s)`;
+
+      document.getElementById('statOffscreenChars').textContent = `${s.offscreen_extracted_chars.toLocaleString()} chars`;
+      document.getElementById('statTokens').textContent = `~${s.estimated_tokens.toLocaleString()} tokens`;
+      document.getElementById('statScanTime').textContent = `Extracted in ${s.scan_time_ms} ms`;
+
+      document.getElementById('bufferCountBadge').textContent = s.text_buffers_found;
+
+      // 1. Render selected LLM Verbosity tier
+      loadVerbosityPreview();
+
+      // 2. Render Deep Text Buffers
+      const bufContainer = document.getElementById('buffersContainer');
+      bufContainer.innerHTML = '';
+
+      if (!snap.text_buffers || snap.text_buffers.length === 0) {
+        bufContainer.innerHTML = `
+          <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 text-center text-xs text-slate-400">
+            No deep <code class="mono text-indigo-300">TextPattern</code> or <code class="mono text-indigo-300">ValuePattern</code> buffers were exposed on container nodes in this window.
+            (All control labels are already included in Tab 1: LLM Semantic Snapshot).
+          </div>
+        `;
+      } else {
+        for (const b of snap.text_buffers) {
+          const card = document.createElement('div');
+          card.className = 'bg-slate-900 border border-slate-800 rounded-lg overflow-hidden';
+          const offscreenBadge = b.offscreen_chars > 0
+            ? `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-semibold mono">✨ +${b.offscreen_chars.toLocaleString()} OFF-SCREEN / UNRENDERED CHARS EXTRACTED</span>`
+            : `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[11px] mono">All ${b.total_chars.toLocaleString()} chars currently visible</span>`;
+
+          card.innerHTML = `
+            <div class="px-4 py-2.5 bg-slate-950/70 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-semibold mono text-xs">${b.id}</span>
+                <span class="text-xs font-semibold text-white mono">${escapeHtml(b.role)}</span>
+                <span class="text-xs text-slate-400 truncate max-w-md">"${escapeHtml(b.name)}"</span>
+                <span class="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-amber-300 mono">${b.source}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-300 mono">Total: <strong>${b.total_chars.toLocaleString()}</strong> chars (${b.total_lines} lines)</span>
+                ${offscreenBadge}
+              </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+              <div class="p-3">
+                <div class="text-[11px] font-semibold uppercase tracking-wider text-emerald-400 mb-1.5 flex items-center justify-between">
+                  <span>Full DocumentRange Buffer (${b.total_lines} lines — includes unrendered off-screen text)</span>
+                </div>
+                <pre class="bg-slate-950 border border-slate-800/80 rounded p-3 text-[11px] mono text-slate-200 max-h-80 overflow-auto whitespace-pre-wrap">${escapeHtml(b.full_text)}</pre>
+              </div>
+              <div class="p-3">
+                <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+                  <span>Visible Viewport Range Only (${b.visible_lines} lines currently painted on screen)</span>
+                </div>
+                <pre class="bg-slate-950 border border-slate-800/80 rounded p-3 text-[11px] mono text-slate-400 max-h-80 overflow-auto whitespace-pre-wrap">${escapeHtml(b.visible_text || '(App reports entire buffer or does not segment visible range)')}</pre>
+              </div>
+            </div>
+          `;
+          bufContainer.appendChild(card);
+        }
+      }
+
+      // 3. Render Interactive Hierarchy
+      const treeContainer = document.getElementById('treeContainer');
+      treeContainer.innerHTML = renderTreeNodes(snap.tree || []);
+    }
+
+    function renderTreeNodes(nodes) {
+      if (!nodes || nodes.length === 0) return '<div class="text-slate-500">No semantic nodes.</div>';
+      let html = '';
+      for (const n of nodes) {
+        const pad = n.depth * 16;
+        const badges = [];
+        if (n.focused) badges.push('<span class="text-indigo-400">[focused]</span>');
+        if (n.offscreen) badges.push('<span class="text-slate-500">[offscreen]</span>');
+        if (n.has_text) badges.push(`<span class="text-emerald-400">[${n.text_source}: ${n.total_chars} chars${n.offscreen_chars > 0 ? `, +${n.offscreen_chars} offscreen` : ''}]</span>`);
+
+        html += `
+          <div style="padding-left: ${pad}px" class="py-0.5 hover:bg-slate-800/50 rounded px-1">
+            <span class="text-indigo-400 font-semibold">${n.id}</span>
+            <span class="text-amber-300">${escapeHtml(n.role)}</span>
+            ${n.name ? `<span class="text-slate-200">"${escapeHtml(n.name)}"</span>` : ''}
+            ${badges.join(' ')}
+          </div>
+        `;
+        if (n.children && n.children.length > 0) {
+          html += renderTreeNodes(n.children);
+        }
+      }
+      return html;
+    }
+
+    async function spawnTestPad() {
+      const btn = document.getElementById('spawnTestBtn');
+      const oldText = btn.innerHTML;
+      btn.innerHTML = '<span>⏳ Spawning 250-Line Notepad...</span>';
+      btn.disabled = true;
+      try {
+        await fetch('/api/spawn-test-pad', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lines: 250 })
+        });
+        await loadWindows();
+        const notepadWin = allWindows.find(w =>
+          w.title.toLowerCase().includes('offscreen_test_doc') ||
+          w.process.toLowerCase().includes('notepad')
+        );
+        if (notepadWin) {
+          await inspectWindow(notepadWin.hwnd);
+          switchTab('buffers');
+        }
+      } finally {
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+      }
+    }
+
+    function switchTab(tab) {
+      for (const t of ['yaml', 'buffers', 'tree', 'arch']) {
+        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById(`tabBtn-${t}`);
+        if (t === tab) {
+          btn.className = 'tab-btn px-3 py-1.5 rounded text-xs font-medium bg-indigo-600 text-white';
+        } else {
+          btn.className = 'tab-btn px-3 py-1.5 rounded text-xs font-medium text-slate-400 hover:text-white';
+        }
+      }
+    }
+
+    let currentLlmText = '';
+
+    async function loadVerbosityPreview() {
+      const verbosity = document.getElementById('verbositySelect').value || 'compact';
+      const target = selectedHwnd || 'all';
+      const apiUrl = `/api/llm?target=${encodeURIComponent(target)}&verbosity=${encodeURIComponent(verbosity)}&format=text`;
+      const jsonUrl = `/api/llm?target=${encodeURIComponent(target)}&verbosity=${encodeURIComponent(verbosity)}`;
+
+      const urlLink = document.getElementById('liveApiUrl');
+      urlLink.href = apiUrl;
+      urlLink.textContent = `GET ${apiUrl} ↗`;
+
+      try {
+        const res = await fetch(jsonUrl);
+        const data = await res.json();
+        currentLlmText = data.llm_text || '';
+        document.getElementById('yamlOutput').textContent = currentLlmText;
+        document.getElementById('verbosityTokenBadge').textContent =
+          `~${(data.estimated_tokens || 0).toLocaleString()} tokens (${(data.char_count || 0).toLocaleString()} chars)`;
+        document.getElementById('statTokens').textContent =
+          `~${(data.estimated_tokens || 0).toLocaleString()} tokens`;
+        highlightYamlSearch();
+      } catch (e) {
+        console.error('Verbosity fetch error:', e);
+      }
+    }
+
+    function highlightYamlSearch() {
+      if (!currentLlmText) return;
+      const q = document.getElementById('yamlSearchInput').value;
+      const pre = document.getElementById('yamlOutput');
+      if (!q) {
+        pre.textContent = currentLlmText;
+        return;
+      }
+      const escapedYaml = escapeHtml(currentLlmText);
+      const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      pre.innerHTML = escapedYaml.replace(regex, '<mark class="bg-amber-400 text-slate-950 px-0.5 rounded">$1</mark>');
+    }
+
+    async function copySnapshotForLLM() {
+      if (!currentLlmText) return;
+      await navigator.clipboard.writeText(currentLlmText);
+      const btn = document.getElementById('copyBtn');
+      const prev = btn.textContent;
+      btn.textContent = '✅ Copied to Clipboard!';
+      setTimeout(() => { btn.textContent = prev; }, 1800);
+    }
+
+    function toggleAutoPoll() {
+      const checked = document.getElementById('autoPollToggle').checked;
+      if (checked) {
+        autoPollTimer = setInterval(() => {
+          loadWindows();
+          if (selectedHwnd) reInspectCurrent();
+        }, 3500);
+      } else if (autoPollTimer) {
+        clearInterval(autoPollTimer);
+        autoPollTimer = null;
+      }
+    }
+
+    async function loadArchMatrix() {
+      const res = await fetch('/api/architecture');
+      const data = await res.json();
+      const tbody = document.getElementById('archTableBody');
+      tbody.innerHTML = (data.platforms || []).map(p => `
+        <tr>
+          <td class="p-2.5 font-semibold text-white">${escapeHtml(p.os)}</td>
+          <td class="p-2.5 text-emerald-400">${escapeHtml(p.status)}</td>
+          <td class="p-2.5 text-indigo-300">${escapeHtml(p.api)}</td>
+          <td class="p-2.5 text-amber-300">${escapeHtml(p.deep_text_api)}</td>
+          <td class="p-2.5 text-slate-300">${escapeHtml(p.wakeup_signal)}</td>
+          <td class="p-2.5 text-slate-400">${escapeHtml(p.session_bridge)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function connectEventStream() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/ws/events`);
+      const log = document.getElementById('eventStreamLog');
+
+      ws.onmessage = (ev) => {
+        const data = JSON.parse(ev.data);
+        const row = document.createElement('div');
+        let color = 'text-slate-300';
+        if (data.type === 'WINDOW_OPENED') color = 'text-emerald-400';
+        if (data.type === 'WINDOW_CLOSED') color = 'text-rose-400';
+        if (data.type === 'FOCUS_CHANGED') color = 'text-indigo-400';
+        if (data.type === 'TITLE_CHANGED') color = 'text-amber-300';
+
+        row.className = `${color} flex items-center gap-2`;
+        row.innerHTML = `
+          <span class="text-slate-500">[${data.timestamp}]</span>
+          <span class="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-[10px]">${data.type}</span>
+          <span>${escapeHtml(data.message)}</span>
+        `;
+        log.prepend(row);
+        if (data.type === 'WINDOW_OPENED' || data.type === 'WINDOW_CLOSED' || data.type === 'TITLE_CHANGED') {
+          loadWindows();
+        }
+      };
+
+      ws.onclose = () => {
+        setTimeout(connectEventStream, 2500);
+      };
+    }
+
+    function clearEventLog() {
+      document.getElementById('eventStreamLog').innerHTML = '';
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    loadWindows(true);
+    loadArchMatrix();
+    connectEventStream();
+  </script>
+</body>
+</html>
