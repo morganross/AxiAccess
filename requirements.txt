@@ -1,5 +1,13 @@
-comtypes>=1.4.0
 fastapi>=0.110.0
 uvicorn>=0.28.0
 websockets>=12.0
 pydantic>=2.0.0
+
+# Windows Native UI Automation (UIAutomationCore.dll)
+comtypes>=1.4.0; sys_platform == 'win32'
+
+# macOS Native Accessibility (AXUIElement / Quartz / AppKit)
+pyobjc-core>=10.0; sys_platform == 'darwin'
+pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'
+pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'
+pyobjc-framework-ApplicationServices>=10.0; sys_platform == 'darwin'

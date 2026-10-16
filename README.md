@@ -1,19 +1,19 @@
 # A11y-SSH: Universal Remote Desktop Accessibility Observer
 
-**A semantic "GUI-SSH" sidechannel for LLMs.**  
+**A cross-platform semantic "GUI-SSH" sidechannel for LLMs (`Windows` · `macOS` · `Linux`).**  
 Extracts live desktop UI hierarchies and **unrendered / off-screen document text buffers** directly from OS-native accessibility services (`Windows UI Automation`, `macOS AXUIElement`, `Linux AT-SPI2`)—independently of the pixel framebuffer, without taking screenshots, and without touching window focus or mouse input.
 
 ---
 
-## Why This Exists
+## Cross-Platform Native Engines
 
-Standard **SSH / PowerShell** is blind to what happens inside GUI applications, while **RDP / VNC + Vision LLMs** rely on slow, token-expensive screenshots that can only see the pixels currently painted in the viewport.
+`get_universal_engine()` automatically selects the native OS Accessibility backend for the host machine and maps all three OSes into a unified schema and 5-tier LLM verbosity format:
 
-**A11y-SSH** sits in the middle:
-1. **Interactive Desktop Bridge (`WinSta0\Default`):** Bypasses Windows session/desktop isolation (`OpenDesktopW("Default") + SetThreadDesktop`) so background daemons and SSH sessions can inspect the live interactive GUI desktop.
-2. **Screen Reader Wakeup Handshake (`SPI_SETSCREENREADER`):** Broadcasts the native OS assistive-technology flag so lazy apps (Chrome, Firefox, Electron, VS Code, ChatGPT, Slack) unlock their internal DOM and text buffers.
-3. **Unrendered / Off-Screen Text Extraction (`IUIAutomationTextPattern`):** Queries `DocumentRange` alongside `GetVisibleRanges()` to retrieve thousands of lines of scrolled-away or unrendered document text straight from application memory.
-4. **5-Tier LLM Verbosity API:** Compresses noisy accessibility trees (`CacheRequest`-batched COM traversal) into token-budgeted formats tailored for LLM agents.
+| OS | Engine Module | Native Accessibility API | Unrendered / Off-Screen Text API | Electron / Browser Wakeup Handshake |
+| :--- | :--- | :--- | :--- | :--- |
+| **Windows** | [`a11y_engine.py`](a11y_engine.py) | `UIAutomationCore.dll` (`IUIAutomation` + `CacheRequest` COM batching + `WinSta0\Default` bridge) | `IUIAutomationTextPattern::DocumentRange` & `GetVisibleRanges()` | `SystemParametersInfoW(SPI_SETSCREENREADER, 1)` |
+| **macOS** | [`a11y_macos.py`](a11y_macos.py) | `ApplicationServices` / `HIServices` (`AXUIElementRef`) + `Quartz.CGWindowList` | `kAXValueAttribute` + `kAXStringForRangeParameterizedAttribute` + `kAXVisibleCharacterRangeAttribute` | `AXUIElementSetAttributeValue(app, "AXManualAccessibility", kCFBooleanTrue)` |
+| **Linux** | [`a11y_linux.py`](a11y_linux.py) | `AT-SPI2` over D-Bus (`pyatspi` / `gi.repository.Atspi`) | `org.a11y.atspi.Text.getText(0, -1)` | `org.a11y.Status.IsEnabled = true` & `ScreenReaderEnabled = true` |
 
 ---
 
@@ -29,12 +29,14 @@ Standard **SSH / PowerShell** is blind to what happens inside GUI applications, 
 
 ---
 
-## Quick Start
+## Quick Start (Windows, macOS, & Linux)
 
 ### 1. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
+* **Linux system package note:** Ensure the system AT-SPI2 Python bindings are installed (`sudo apt install python3-pyatspi gir1.2-atspi-2.0` on Debian/Ubuntu, or `sudo dnf install python3-pyatspi` on Fedora).
+* **macOS permission note:** Grant Accessibility permission to your terminal/Python binary in `System Settings -> Privacy & Security -> Accessibility`.
 
 ### 2. Launch the Web Dashboard & HTTP/WebSocket Server
 ```bash
@@ -59,12 +61,3 @@ curl "http://127.0.0.1:8765/api/llm?target=firefox&verbosity=interactive&format=
 python mcp_server.py
 ```
 Exposes the `observe_desktop(target, verbosity)` tool over JSON-RPC 2.0 `stdio`.
-
----
-
-## Project Structure
-
-- [`a11y_engine.py`](a11y_engine.py) — Core Windows UI Automation (`UIAutomationCore.dll`) engine, `WinSta0\Default` desktop bridge, `CacheRequest` batcher, `TextPattern` off-screen extractor, and 5-tier LLM formatter.
-- [`server.py`](server.py) — FastAPI REST & WebSocket sidechannel server (`/api/windows`, `/api/llm`, `/api/inspect/{target}`, `/ws/events`).
-- [`mcp_server.py`](mcp_server.py) — Model Context Protocol (MCP) `stdio` server for native LLM tool integration.
-- [`index.html`](index.html) — Live interactive Dark-Mode Web Dashboard with one-click 250-line off-screen Notepad verification test.

@@ -6,9 +6,9 @@ to inspect the desktop with explicit verbosity levels.
 
 import json
 import sys
-from a11y_engine import WindowsA11yEngine
+from a11y_engine import get_universal_engine
 
-engine = WindowsA11yEngine()
+engine = get_universal_engine()
 
 TOOLS = [
     {

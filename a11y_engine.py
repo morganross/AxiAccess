@@ -1,21 +1,30 @@
-import ctypes
-from ctypes import wintypes
+import sys
 import time
 import threading
-import comtypes
-import comtypes.client
 
-# Load native Windows UI Automation Type Library
-comtypes.client.GetModule("UIAutomationCore.dll")
-from comtypes.gen.UIAutomationClient import (
-    CUIAutomation,
-    IUIAutomation,
-    IUIAutomationElement,
-    IUIAutomationTextPattern,
-    IUIAutomationValuePattern,
-    IUIAutomationLegacyIAccessiblePattern,
-    TreeScope_Children,
-)
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+    import comtypes
+    import comtypes.client
+
+    # Load native Windows UI Automation Type Library
+    comtypes.client.GetModule("UIAutomationCore.dll")
+    from comtypes.gen.UIAutomationClient import (
+        CUIAutomation,
+        IUIAutomation,
+        IUIAutomationElement,
+        IUIAutomationTextPattern,
+        IUIAutomationValuePattern,
+        IUIAutomationLegacyIAccessiblePattern,
+        TreeScope_Children,
+    )
+else:
+    ctypes = None
+    wintypes = None
+    comtypes = None
+    IUIAutomation = object
+    IUIAutomationElement = object
 
 # UIA Property IDs for high-speed CacheRequest batching
 UIA_ControlTypePropertyId = 30003
@@ -101,12 +110,12 @@ TEXT_BEARING_ROLES = {
 }
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-kernel32 = ctypes.windll.kernel32
-user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32 if sys.platform == "win32" else None
+user32 = ctypes.windll.user32 if sys.platform == "win32" else None
 
 
 def get_process_name(pid: int) -> str:
-    if not pid:
+    if not pid or sys.platform != "win32":
         return "system"
     h_proc = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not h_proc:
@@ -123,22 +132,26 @@ def get_process_name(pid: int) -> str:
 
 def set_screen_reader_flag(enabled: bool = True) -> bool:
     """
-    Sets SPI_SETSCREENREADER (0x0047) so Chromium, Electron (VS Code, ChatGPT, Slack),
-    and Firefox build and expose their internal accessibility trees and TextPattern buffers.
+    Sets the OS-native screen reader flag across Windows (SPI_SETSCREENREADER),
+    macOS (AXManualAccessibility / AXEnhancedUserInterface), and Linux (org.a11y.Status).
     """
-    SPI_SETSCREENREADER = 0x0047
-    SPIF_SENDCHANGE = 0x0002
-    user32.SystemParametersInfoW(
-        SPI_SETSCREENREADER, 1 if enabled else 0, None, SPIF_SENDCHANGE
-    )
-    return get_screen_reader_flag()
+    if sys.platform == "win32":
+        SPI_SETSCREENREADER = 0x0047
+        SPIF_SENDCHANGE = 0x0002
+        user32.SystemParametersInfoW(
+            SPI_SETSCREENREADER, 1 if enabled else 0, None, SPIF_SENDCHANGE
+        )
+        return get_screen_reader_flag()
+    return get_universal_engine().set_screen_reader_flag(enabled)
 
 
 def get_screen_reader_flag() -> bool:
-    SPI_GETSCREENREADER = 0x0046
-    flag = wintypes.BOOL()
-    user32.SystemParametersInfoW(SPI_GETSCREENREADER, 0, ctypes.byref(flag), 0)
-    return bool(flag.value)
+    if sys.platform == "win32":
+        SPI_GETSCREENREADER = 0x0046
+        flag = wintypes.BOOL()
+        user32.SystemParametersInfoW(SPI_GETSCREENREADER, 0, ctypes.byref(flag), 0)
+        return bool(flag.value)
+    return get_universal_engine().get_screen_reader_flag()
 
 
 class WindowsA11yEngine:
@@ -758,4 +771,35 @@ class WindowsA11yEngine:
             "stats": s,
             "llm_text": text_out,
         }
+
+
+_UNIVERSAL_ENGINE_INSTANCE = None
+
+
+def get_universal_engine():
+    """
+    Auto-detects the host OS (Windows, macOS, or Linux) and returns the corresponding
+    native OS Accessibility Engine equipped with the 5-tier LLM verbosity formatter.
+    """
+    global _UNIVERSAL_ENGINE_INSTANCE
+    if _UNIVERSAL_ENGINE_INSTANCE is not None:
+        return _UNIVERSAL_ENGINE_INSTANCE
+
+    if sys.platform == "win32":
+        _UNIVERSAL_ENGINE_INSTANCE = WindowsA11yEngine()
+    elif sys.platform == "darwin":
+        from a11y_macos import MacOSA11yEngine
+
+        # Bind the shared 5-tier format_for_llm method onto MacOSA11yEngine
+        MacOSA11yEngine.format_for_llm = WindowsA11yEngine.format_for_llm
+        _UNIVERSAL_ENGINE_INSTANCE = MacOSA11yEngine()
+    else:
+        from a11y_linux import LinuxA11yEngine
+
+        # Bind the shared 5-tier format_for_llm method onto LinuxA11yEngine
+        LinuxA11yEngine.format_for_llm = WindowsA11yEngine.format_for_llm
+        _UNIVERSAL_ENGINE_INSTANCE = LinuxA11yEngine()
+
+    return _UNIVERSAL_ENGINE_INSTANCE
+
 

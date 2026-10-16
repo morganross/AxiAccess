@@ -1,5 +1,7 @@
 import asyncio
-import ctypes
+import os
+import subprocess
+import sys
 import time
 from typing import Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -8,18 +10,18 @@ from pydantic import BaseModel
 import uvicorn
 
 from a11y_engine import (
-    WindowsA11yEngine,
+    get_universal_engine,
     get_screen_reader_flag,
     set_screen_reader_flag,
 )
 
 app = FastAPI(
     title="A11y-SSH: Universal Semantic Remote Desktop Observer",
-    description="Sidechannel OS Accessibility & Off-Screen Text Extractor for LLMs",
-    version="1.1.0",
+    description="Cross-Platform Sidechannel OS Accessibility & Off-Screen Text Extractor for LLMs (Windows, macOS, Linux)",
+    version="1.2.0",
 )
 
-engine = WindowsA11yEngine()
+engine = get_universal_engine()
 event_history = []
 
 
@@ -85,23 +87,21 @@ def api_set_wakeup(req: WakeupRequest):
 @app.post("/api/spawn-test-pad")
 def api_spawn_test_pad(req: SpawnDemoRequest):
     """
-    Creates a 300-line sample document and opens it in Notepad on the interactive desktop
-    so you can immediately test extracting lines 50..300 that are scrolled off-screen.
+    Creates a 250-line sample document and opens it in the native OS text editor
+    (Notepad on Windows, TextEdit on macOS, gedit/xdg-open on Linux)
+    so you can immediately test extracting lines 26..250 that are scrolled off-screen.
     """
-    import os
-    import subprocess
-
     sample_path = os.path.join(os.path.dirname(__file__), "offscreen_test_doc.txt")
     lines = [
         "==========================================================================",
         " A11Y-SSH UNRENDERED / OFF-SCREEN TEXT EXTRACTION VERIFICATION DOCUMENT",
         "==========================================================================",
-        "Only the first ~25 lines of this file are painted in Notepad's visible",
-        "viewport. Lines 30 through 300 are completely scrolled off-screen and have",
+        "Only the first ~25 lines of this file are painted in the editor's visible",
+        "viewport. Lines 30 through 250 are completely scrolled off-screen and have",
         "NEVER been rendered into the desktop framebuffer.",
         "",
-        "Yet Windows IUIAutomationTextPattern::DocumentRange retrieves all 300 lines",
-        "instantly in read-only mode without scrolling or moving window focus!",
+        "Yet native OS Accessibility Text Ranges retrieve all 250 lines instantly",
+        "in read-only mode without scrolling or moving window focus!",
         "--------------------------------------------------------------------------",
     ]
     for i in range(11, req.lines + 1):
@@ -114,8 +114,13 @@ def api_spawn_test_pad(req: SpawnDemoRequest):
     with open(sample_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    # Launch Notepad on WinSta0\Default
-    subprocess.Popen(["notepad.exe", sample_path])
+    if sys.platform == "win32":
+        subprocess.Popen(["notepad.exe", sample_path])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-a", "TextEdit", sample_path])
+    else:
+        subprocess.Popen(["xdg-open", sample_path])
+
     time.sleep(0.8)
     return {"status": "spawned", "file": sample_path, "lines": req.lines}
 
@@ -127,7 +132,7 @@ def api_cross_platform_matrix():
         "platforms": [
             {
                 "os": "Windows",
-                "status": "Active (Live on this Host)",
+                "status": "Implemented (a11y_engine.py)" + (" — Active Host" if sys.platform == "win32" else ""),
                 "api": "UI Automation (UIAutomationCore.dll / IUIAutomation)",
                 "tree_walker": "ControlViewWalker + CreateCacheRequest (Batched COM)",
                 "deep_text_api": "IUIAutomationTextPattern::DocumentRange & GetVisibleRanges()",
@@ -136,21 +141,21 @@ def api_cross_platform_matrix():
             },
             {
                 "os": "macOS",
-                "status": "Protocol Mapped",
+                "status": "Implemented (a11y_macos.py)" + (" — Active Host" if sys.platform == "darwin" else ""),
                 "api": "ApplicationServices / HIServices (AXUIElementRef)",
                 "tree_walker": "AXUIElementCopyAttributeValue(kAXChildrenAttribute)",
                 "deep_text_api": "kAXValueAttribute + kAXStringForRangeParameterizedAttribute + kAXVisibleCharacterRangeAttribute",
                 "wakeup_signal": "AXUIElementSetAttributeValue(app, 'AXManualAccessibility', kCFBooleanTrue)",
-                "session_bridge": "LaunchAgent in Aqua GUI Session over SSH stdio",
+                "session_bridge": "Quartz CGWindowList + Aqua GUI Session over SSH stdio",
             },
             {
                 "os": "Linux",
-                "status": "Protocol Mapped",
-                "api": "AT-SPI2 over D-Bus (org.a11y.atspi)",
+                "status": "Implemented (a11y_linux.py)" + (" — Active Host" if sys.platform.startswith("linux") else ""),
+                "api": "AT-SPI2 over D-Bus (org.a11y.atspi / pyatspi)",
                 "tree_walker": "org.a11y.atspi.Accessible.GetChildren / GetRoleName",
-                "deep_text_api": "org.a11y.atspi.Text.GetText(0, -1) vs GetBoundedRanges()",
+                "deep_text_api": "org.a11y.atspi.Text.getText(0, -1)",
                 "wakeup_signal": "org.a11y.Status.IsEnabled = true & ScreenReaderEnabled = true",
-                "session_bridge": "Native D-Bus socket forwarding over SSH",
+                "session_bridge": "Native D-Bus session bus forwarding over SSH",
             },
         ]
     }
