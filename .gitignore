@@ -4,5 +4,6 @@ __pycache__/
 .venv/
 venv/
 env/
+/target/
 offscreen_test_doc.txt
 .DS_Store
