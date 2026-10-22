@@ -72,6 +72,30 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Connect to remote host (over SSH/HTTP/local) and convert into coding-agent formats
+    Reader {
+        /// Target window or 'all'
+        #[arg(default_value = "all")]
+        target: String,
+        /// Remote SSH host (e.g. user@dev-server)
+        #[arg(long)]
+        ssh: Option<String>,
+        /// SSH port (if non-standard 22)
+        #[arg(short, long)]
+        port: Option<u16>,
+        /// Path to SSH private key
+        #[arg(short, long)]
+        identity: Option<String>,
+        /// HTTP URL to remote AxiAccess daemon
+        #[arg(long)]
+        url: Option<String>,
+        /// Output format for coding agent: xml, markdown, diff, json
+        #[arg(short, long, default_value = "xml")]
+        format: String,
+        /// Return only what changed since last inspection
+        #[arg(long)]
+        diff: bool,
+    },
 }
 
 #[derive(Deserialize)]
@@ -527,6 +551,54 @@ async fn main() {
                 }
                 Err(e) => {
                     eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+        Some(Commands::Reader {
+            target,
+            ssh,
+            port,
+            identity,
+            url,
+            format,
+            diff,
+        }) => {
+            let mut args = vec!["axiaccess_reader.py".to_string(), target, "-f".to_string(), format];
+            if let Some(s) = ssh {
+                args.push("--ssh".to_string());
+                args.push(s);
+            }
+            if let Some(p) = port {
+                args.push("-p".to_string());
+                args.push(p.to_string());
+            }
+            if let Some(i) = identity {
+                args.push("-i".to_string());
+                args.push(i);
+            }
+            if let Some(u) = url {
+                args.push("--url".to_string());
+                args.push(u);
+            }
+            if diff {
+                args.push("--diff".to_string());
+            }
+
+            let status = Command::new("python")
+                .args(&args)
+                .status()
+                .or_else(|_| Command::new("python3").args(&args).status());
+
+            match status {
+                Ok(s) => {
+                    if !s.success() {
+                        std::process::exit(s.code().unwrap_or(1));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to launch axiaccess_reader.py: {}", e);
                     std::process::exit(1);
                 }
             }

@@ -79,6 +79,56 @@ curl "http://127.0.0.1:8765/api/llm?target=ChatGPT&verbosity=text_only&format=te
 curl "http://127.0.0.1:8765/api/llm?target=firefox&verbosity=interactive&format=text"
 ```
 
+---
+
+## Reader-Converter for Coding Agent LLMs (`axiaccess_reader.py` / `axiaccess reader`)
+
+While the **Sender** runs on the remote host capturing the raw accessibility tree, the **Reader-Converter** connects over SSH (or HTTP/locally) and converts the screen into clean, token-efficient semantic context blocks specifically for coding agents:
+
+- `<active_editor>` — Open file name, language, visible code, and off-screen buffers.
+- `<terminal>` — Shell prompt, last executed command, and output traces.
+- `<errors_detected>` — Isolated compiler errors, tracebacks, and test failures.
+- `<browser_preview>` — Active web preview tab & URL for localhost testing.
+- `<active_dialogs>` — Popups and modal alerts blocking interaction.
+
+### Remote Execution Over SSH
+
+```bash
+# 1. Connect over SSH and get an XML coding-agent context prompt:
+./target/release/axiaccess reader --ssh user@remote-box -f xml
+# or using Python:
+python axiaccess_reader.py --ssh user@remote-box -f xml
+
+# 2. Get Markdown with fenced code blocks:
+python axiaccess_reader.py --ssh user@remote-box -f markdown
+
+# 3. Low-token Delta / Diff Mode ("What changed since my last step?"):
+python axiaccess_reader.py --ssh user@remote-box --diff
+
+# 4. Target a specific application:
+python axiaccess_reader.py --ssh user@remote-box "Visual Studio Code" -f xml
+```
+
+### Python SDK Example for Agent Loops
+
+```python
+from axiaccess_reader import RemoteAxiAccessClient, CodingAgentSynthesizer, format_as_coding_xml
+
+# Connect to remote desktop over SSH
+client = RemoteAxiAccessClient(ssh_host="user@dev-server")
+raw_snapshot = client.fetch_desktop_snapshot(target="all")
+
+# Synthesize into coding-agent prompt
+synthesizer = CodingAgentSynthesizer(raw_snapshot, host_label="dev-server")
+agent_context = synthesizer.synthesize()
+
+# Inject into LLM prompt
+prompt = format_as_coding_xml(agent_context)
+print(prompt)
+```
+
+---
+
 ## MCP Server (Claude / Gemini / Cursor / SSH)
 
 ```bash
