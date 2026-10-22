@@ -1,12 +1,12 @@
 """
-MCP (Model Context Protocol) JSON-RPC 2.0 Server over stdio for A11y-SSH.
+MCP (Model Context Protocol) JSON-RPC 2.0 Server over stdio for AxiAccess.
 Allows Claude, Gemini, Cursor, or any MCP-compatible LLM agent (locally or over SSH)
 to inspect the desktop with explicit verbosity levels.
 """
 
 import json
 import sys
-from a11y_engine import get_universal_engine
+from axiaccess_engine import get_universal_engine
 
 engine = get_universal_engine()
 
@@ -14,7 +14,7 @@ TOOLS = [
     {
         "name": "observe_desktop",
         "description": (
-            "Read-only semantic GUI-SSH observer. Extracts OS accessibility hierarchy and "
+            "AxiAccess: Read-only semantic GUI-SSH observer. Extracts OS accessibility hierarchy and "
             "unrendered off-screen document text at 5 selectable verbosity levels."
         ),
         "inputSchema": {
@@ -56,7 +56,7 @@ def handle_request(req: dict):
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "a11y-ssh-observer", "version": "1.1.0"},
+                "serverInfo": {"name": "axiaccess-observer", "version": "2.0.0"},
             },
         }
 

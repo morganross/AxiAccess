@@ -1160,7 +1160,7 @@ mod win_impl {
         };
 
         let header = format!(
-            "# Semantic GUI-SSH Snapshot (Rust Native Engine)\nwindow: \"{}\" (process: {}, pid: {}, hwnd: {})\nstats: {} semantic nodes (pruned from {} raw UIA nodes, {:.1}% noise removed in {:.1}ms)\nelements:\n",
+            "# AxiAccess Snapshot (Rust Native Engine)\nwindow: \"{}\" (process: {}, pid: {}, hwnd: {})\nstats: {} semantic nodes (pruned from {} raw UIA nodes, {:.1}% noise removed in {:.1}ms)\nelements:\n",
             win_title, win_proc, win_pid, win_hwnd, pruned_nodes_count, raw_nodes_visited, compression_pct, elapsed_ms
         );
         let llm_yaml = format!("{}{}", header, yaml_lines.join("\n"));
@@ -1211,7 +1211,7 @@ mod mac_impl {
     }
     pub fn list_windows() -> WindowListResponse {
         let out = Command::new("python3")
-            .args(["-c", "import json, a11y_macos; print(json.dumps(a11y_macos.MacOSA11yEngine().list_windows()))"])
+            .args(["-c", "import json, axiaccess_macos; print(json.dumps(axiaccess_macos.MacOSA11yEngine().list_windows()))"])
             .output();
         if let Ok(o) = out {
             if let Ok(res) = serde_json::from_slice::<WindowListResponse>(&o.stdout) {
@@ -1232,7 +1232,7 @@ mod mac_impl {
         max_nodes: usize,
     ) -> Result<InspectResponse, String> {
         let script = format!(
-            "import json, a11y_macos; print(json.dumps(a11y_macos.MacOSA11yEngine().inspect_window({:?}, {}, {})))",
+            "import json, axiaccess_macos; print(json.dumps(axiaccess_macos.MacOSA11yEngine().inspect_window({:?}, {}, {})))",
             target_id, max_depth, max_nodes
         );
         let out = Command::new("python3")
@@ -1256,7 +1256,7 @@ mod linux_impl {
     }
     pub fn list_windows() -> WindowListResponse {
         let out = Command::new("python3")
-            .args(["-c", "import json, a11y_linux; print(json.dumps(a11y_linux.LinuxA11yEngine().list_windows()))"])
+            .args(["-c", "import json, axiaccess_linux; print(json.dumps(axiaccess_linux.LinuxA11yEngine().list_windows()))"])
             .output();
         if let Ok(o) = out {
             if let Ok(res) = serde_json::from_slice::<WindowListResponse>(&o.stdout) {
@@ -1277,7 +1277,7 @@ mod linux_impl {
         max_nodes: usize,
     ) -> Result<InspectResponse, String> {
         let script = format!(
-            "import json, a11y_linux; print(json.dumps(a11y_linux.LinuxA11yEngine().inspect_window({:?}, {}, {})))",
+            "import json, axiaccess_linux; print(json.dumps(axiaccess_linux.LinuxA11yEngine().inspect_window({:?}, {}, {})))",
             target_id, max_depth, max_nodes
         );
         let out = Command::new("python3")

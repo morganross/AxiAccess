@@ -3,18 +3,6 @@
 version = 4
 
 [[package]]
-name = "a11y-ssh"
-version = "2.0.0"
-dependencies = [
- "axum",
- "clap",
- "serde",
- "serde_json",
- "tokio",
- "windows",
-]
-
-[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -80,6 +68,18 @@ name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+
+[[package]]
+name = "axiaccess"
+version = "2.0.0"
+dependencies = [
+ "axum",
+ "clap",
+ "serde",
+ "serde_json",
+ "tokio",
+ "windows",
+]
 
 [[package]]
 name = "axum"

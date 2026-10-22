@@ -1,19 +1,21 @@
-# A11y-SSH: Universal Remote Desktop Accessibility Observer
+# AxiAccess: Universal Remote Desktop Accessibility Observer
 
-**A cross-platform semantic "GUI-SSH" sidechannel for LLMs (`Windows` · `macOS` · `Linux`).**  
+**AxiAccess is a cross-platform semantic "GUI-SSH" sidechannel for LLMs (`Windows` · `macOS` · `Linux`).**  
 Extracts live desktop UI hierarchies and **unrendered / off-screen document text buffers** directly from OS-native accessibility services (`Windows UI Automation`, `macOS AXUIElement`, `Linux AT-SPI2`)—independently of the pixel framebuffer, without taking screenshots, and without touching window focus or mouse input.
+
+GitHub Repository: **[https://github.com/morganross/AxiAccess](https://github.com/morganross/AxiAccess)**
 
 ---
 
 ## Cross-Platform Native Engines
 
-`get_universal_engine()` automatically selects the native OS Accessibility backend for the host machine and maps all three OSes into a unified schema and 5-tier LLM verbosity format:
+AxiAccess automatically selects the native OS Accessibility backend for the host machine and maps all three OSes into a unified schema and 5-tier LLM verbosity format:
 
 | OS | Engine Module | Native Accessibility API | Unrendered / Off-Screen Text API | Electron / Browser Wakeup Handshake |
 | :--- | :--- | :--- | :--- | :--- |
-| **Windows** | [`a11y_engine.py`](a11y_engine.py) | `UIAutomationCore.dll` (`IUIAutomation` + `CacheRequest` COM batching + `WinSta0\Default` bridge) | `IUIAutomationTextPattern::DocumentRange` & `GetVisibleRanges()` | `SystemParametersInfoW(SPI_SETSCREENREADER, 1)` |
-| **macOS** | [`a11y_macos.py`](a11y_macos.py) | `ApplicationServices` / `HIServices` (`AXUIElementRef`) + `Quartz.CGWindowList` | `kAXValueAttribute` + `kAXStringForRangeParameterizedAttribute` + `kAXVisibleCharacterRangeAttribute` | `AXUIElementSetAttributeValue(app, "AXManualAccessibility", kCFBooleanTrue)` |
-| **Linux** | [`a11y_linux.py`](a11y_linux.py) | `AT-SPI2` over D-Bus (`pyatspi` / `gi.repository.Atspi`) | `org.a11y.atspi.Text.getText(0, -1)` | `org.a11y.Status.IsEnabled = true` & `ScreenReaderEnabled = true` |
+| **Windows** | Rust (`src/engine.rs`) / [`axiaccess_engine.py`](axiaccess_engine.py) | `UIAutomationCore.dll` (`IUIAutomation` + `CacheRequest` COM batching + `WinSta0\Default` bridge) | `IUIAutomationTextPattern::DocumentRange` & `GetVisibleRanges()` | `SystemParametersInfoW(SPI_SETSCREENREADER, 1)` |
+| **macOS** | [`axiaccess_macos.py`](axiaccess_macos.py) | `ApplicationServices` / `HIServices` (`AXUIElementRef`) + `Quartz.CGWindowList` | `kAXValueAttribute` + `kAXStringForRangeParameterizedAttribute` + `kAXVisibleCharacterRangeAttribute` | `AXUIElementSetAttributeValue(app, "AXManualAccessibility", kCFBooleanTrue)` |
+| **Linux** | [`axiaccess_linux.py`](axiaccess_linux.py) | `AT-SPI2` over D-Bus (`pyatspi` / `gi.repository.Atspi`) | `org.a11y.atspi.Text.getText(0, -1)` | `org.a11y.Status.IsEnabled = true` & `ScreenReaderEnabled = true` |
 
 ---
 
@@ -29,22 +31,43 @@ Extracts live desktop UI hierarchies and **unrendered / off-screen document text
 
 ---
 
-## Quick Start (Windows, macOS, & Linux)
+## Quick Start (Rust Binary & Python)
 
-### 1. Install Dependencies
+### Option A: Native Rust Binary (Recommended)
+
+```bash
+cargo build --release
+```
+
+Run AxiAccess in any of three modes:
+
+```bash
+# 1. Start the HTTP REST API, WebSocket event stream, and Web Dashboard:
+./target/release/axiaccess serve --port 8765
+
+# 2. Run one-shot query from terminal / SSH:
+./target/release/axiaccess query ChatGPT -v glance
+./target/release/axiaccess query ChatGPT -v text_only
+
+# 3. Run as an MCP JSON-RPC stdio server:
+./target/release/axiaccess mcp
+```
+
+### Option B: Python Server
+
 ```bash
 pip install -r requirements.txt
+python server.py
 ```
 * **Linux system package note:** Ensure the system AT-SPI2 Python bindings are installed (`sudo apt install python3-pyatspi gir1.2-atspi-2.0` on Debian/Ubuntu, or `sudo dnf install python3-pyatspi` on Fedora).
 * **macOS permission note:** Grant Accessibility permission to your terminal/Python binary in `System Settings -> Privacy & Security -> Accessibility`.
 
-### 2. Launch the Web Dashboard & HTTP/WebSocket Server
-```bash
-python server.py
-```
 Then open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** in your browser.
 
-### 3. Query from an LLM or CLI
+---
+
+## Querying from an LLM or CLI
+
 ```bash
 # Desktop-wide glance (plain text for direct LLM prompt injection)
 curl "http://127.0.0.1:8765/api/llm?target=all&verbosity=glance&format=text"
@@ -56,8 +79,11 @@ curl "http://127.0.0.1:8765/api/llm?target=ChatGPT&verbosity=text_only&format=te
 curl "http://127.0.0.1:8765/api/llm?target=firefox&verbosity=interactive&format=text"
 ```
 
-### 4. Use as an MCP Server (Claude / Gemini / Cursor / SSH)
+## MCP Server (Claude / Gemini / Cursor / SSH)
+
 ```bash
+./target/release/axiaccess mcp
+# or:
 python mcp_server.py
 ```
 Exposes the `observe_desktop(target, verbosity)` tool over JSON-RPC 2.0 `stdio`.

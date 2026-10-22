@@ -9,16 +9,16 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 import uvicorn
 
-from a11y_engine import (
+from axiaccess_engine import (
     get_universal_engine,
     get_screen_reader_flag,
     set_screen_reader_flag,
 )
 
 app = FastAPI(
-    title="A11y-SSH: Universal Semantic Remote Desktop Observer",
-    description="Cross-Platform Sidechannel OS Accessibility & Off-Screen Text Extractor for LLMs (Windows, macOS, Linux)",
-    version="1.2.0",
+    title="AxiAccess: Universal Remote Desktop Accessibility Observer",
+    description="AxiAccess: Cross-Platform Sidechannel OS Accessibility & Off-Screen Text Extractor for LLMs (Windows, macOS, Linux)",
+    version="2.0.0",
 )
 
 engine = get_universal_engine()
@@ -94,7 +94,7 @@ def api_spawn_test_pad(req: SpawnDemoRequest):
     sample_path = os.path.join(os.path.dirname(__file__), "offscreen_test_doc.txt")
     lines = [
         "==========================================================================",
-        " A11Y-SSH UNRENDERED / OFF-SCREEN TEXT EXTRACTION VERIFICATION DOCUMENT",
+        " AXIACCESS UNRENDERED / OFF-SCREEN TEXT EXTRACTION VERIFICATION DOCUMENT",
         "==========================================================================",
         "Only the first ~25 lines of this file are painted in the editor's visible",
         "viewport. Lines 30 through 250 are completely scrolled off-screen and have",
@@ -132,7 +132,7 @@ def api_cross_platform_matrix():
         "platforms": [
             {
                 "os": "Windows",
-                "status": "Implemented (a11y_engine.py)" + (" — Active Host" if sys.platform == "win32" else ""),
+                "status": "Implemented (axiaccess_engine.py)" + (" — Active Host" if sys.platform == "win32" else ""),
                 "api": "UI Automation (UIAutomationCore.dll / IUIAutomation)",
                 "tree_walker": "ControlViewWalker + CreateCacheRequest (Batched COM)",
                 "deep_text_api": "IUIAutomationTextPattern::DocumentRange & GetVisibleRanges()",
@@ -141,7 +141,7 @@ def api_cross_platform_matrix():
             },
             {
                 "os": "macOS",
-                "status": "Implemented (a11y_macos.py)" + (" — Active Host" if sys.platform == "darwin" else ""),
+                "status": "Implemented (axiaccess_macos.py)" + (" — Active Host" if sys.platform == "darwin" else ""),
                 "api": "ApplicationServices / HIServices (AXUIElementRef)",
                 "tree_walker": "AXUIElementCopyAttributeValue(kAXChildrenAttribute)",
                 "deep_text_api": "kAXValueAttribute + kAXStringForRangeParameterizedAttribute + kAXVisibleCharacterRangeAttribute",
@@ -150,7 +150,7 @@ def api_cross_platform_matrix():
             },
             {
                 "os": "Linux",
-                "status": "Implemented (a11y_linux.py)" + (" — Active Host" if sys.platform.startswith("linux") else ""),
+                "status": "Implemented (axiaccess_linux.py)" + (" — Active Host" if sys.platform.startswith("linux") else ""),
                 "api": "AT-SPI2 over D-Bus (org.a11y.atspi / pyatspi)",
                 "tree_walker": "org.a11y.atspi.Accessible.GetChildren / GetRoleName",
                 "deep_text_api": "org.a11y.atspi.Text.getText(0, -1)",
@@ -179,8 +179,8 @@ async def websocket_events(ws: WebSocket):
             {
                 "timestamp": time.strftime("%H:%M:%S"),
                 "type": "CONNECTED",
-                "process": "a11y-ssh",
-                "message": f"Sidechannel attached to WinSta0\\Default ({len(prev_windows)} windows monitored, read-only mode).",
+                "process": "AxiAccess",
+                "message": f"AxiAccess sidechannel attached to WinSta0\\Default ({len(prev_windows)} windows monitored, read-only mode).",
             }
         )
 

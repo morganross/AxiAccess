@@ -1,8 +1,8 @@
 [package]
-name = "a11y-ssh"
+name = "axiaccess"
 version = "2.0.0"
 edition = "2021"
-description = "Universal Semantic Remote Desktop Accessibility Observer & 5-Tier LLM Sidechannel in Rust"
+description = "AxiAccess: Universal Semantic Remote Desktop Accessibility Observer & 5-Tier LLM Sidechannel in Rust"
 authors = ["morganross"]
 
 [dependencies]

@@ -22,9 +22,9 @@ use std::{
 
 #[derive(Parser)]
 #[command(
-    name = "a11y-ssh",
+    name = "axiaccess",
     version = "2.0.0",
-    about = "Native Rust Universal Remote Desktop Accessibility Observer & 5-Tier LLM Sidechannel"
+    about = "AxiAccess: Native Rust Universal Remote Desktop Accessibility Observer & 5-Tier LLM Sidechannel"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -174,7 +174,7 @@ async fn api_spawn_test_pad(Json(body): Json<SpawnDemoBody>) -> impl IntoRespons
 
     let mut lines = vec![
         "==========================================================================".to_string(),
-        " A11Y-SSH RUST NATIVE UNRENDERED / OFF-SCREEN TEXT VERIFICATION DOCUMENT".to_string(),
+        " AXIACCESS RUST NATIVE UNRENDERED / OFF-SCREEN TEXT VERIFICATION DOCUMENT".to_string(),
         "==========================================================================".to_string(),
         "Only the first ~25 lines of this file are painted in the editor's visible".to_string(),
         "viewport. Lines 30 through 250 are completely scrolled off-screen and have".to_string(),
@@ -283,8 +283,8 @@ async fn handle_ws_events(mut socket: WebSocket) {
     let welcome = json!({
         "timestamp": now_hms(),
         "type": "CONNECTED",
-        "process": "a11y-ssh (Rust)",
-        "message": format!("Rust Native Sidechannel attached to WinSta0\\Default ({} windows monitored, read-only).", prev_windows.len())
+        "process": "AxiAccess (Rust)",
+        "message": format!("AxiAccess Native Sidechannel attached to WinSta0\\Default ({} windows monitored, read-only).", prev_windows.len())
     });
     if socket
         .send(Message::Text(welcome.to_string()))
@@ -430,7 +430,7 @@ fn run_mcp_stdio_loop() {
                 "result": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": { "tools": {} },
-                    "serverInfo": { "name": "a11y-ssh-rust", "version": "2.0.0" }
+                    "serverInfo": { "name": "axiaccess-rust", "version": "2.0.0" }
                 }
             })),
             "tools/list" => Some(json!({
@@ -557,7 +557,7 @@ async fn start_http_server(port: u16) {
         .route("/ws/events", get(ws_events));
 
     let addr = format!("127.0.0.1:{}", port);
-    println!("🚀 A11y-SSH Native Rust Server listening on http://{}", addr);
+    println!("🚀 AxiAccess Native Rust Server listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("Failed to bind port");
