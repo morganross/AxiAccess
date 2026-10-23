@@ -1,0 +1,12 @@
+{
+  "baselineRevision": "49b368b685f55ddd906ae5725c90e3a059789f88",
+  "changedSource": "src/observe.rs",
+  "candidateSourceSha256": "2d2284d566089497e1009dbf897991f376b89c8bd95a4fb764a055431b128201",
+  "baselineSourceSha256": "cc176858e8a32dda9431474eb89de670453d0caa76c1bb85a483a4cfc85b4750",
+  "buildExitCode": 0,
+  "buildSeconds": 186.99,
+  "candidateBinary": "/home/kjhgf/workspaces/AxiAccess/.cache/parent-lease-check/axiaccess",
+  "binarySha256": "0cd10f15138111b73ca010fbeb41f0dcbc39ca2cbabc1b02c49f356e313cb20a",
+  "binaryBytes": 10393712,
+  "originalSourceRestored": true
+}

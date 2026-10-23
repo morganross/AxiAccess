@@ -1,0 +1,27 @@
+{
+  "binarySha256": "7435b230a0575fcccc15212e3b501185b5138025fe4f311c5c7c4c12bc23c8aa",
+  "fixtureType": "Owned main-thread suspension, not a naturally observed UI Automation hang",
+  "cases": [
+    {
+      "controlledMainThreadStall": false,
+      "sourceRevision": "unrecorded",
+      "parentPid": 47708,
+      "ownedWorkerPid": 47364,
+      "parentSignal": "TerminateProcess exact owned coordinator",
+      "observedApplicationActions": false,
+      "workerAliveAfter4500ms": false,
+      "workerObservedExitMs": 10.9
+    },
+    {
+      "controlledMainThreadStall": true,
+      "sourceRevision": "unrecorded",
+      "parentPid": 1452,
+      "ownedWorkerPid": 48596,
+      "parentSignal": "TerminateProcess exact owned coordinator",
+      "observedApplicationActions": false,
+      "suspendedOwnedMainThread": 48632,
+      "workerAliveAfter4500ms": false,
+      "workerObservedExitMs": 11.7
+    }
+  ]
+}

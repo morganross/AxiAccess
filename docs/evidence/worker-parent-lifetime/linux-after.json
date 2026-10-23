@@ -1,0 +1,34 @@
+{
+  "binarySha256": "0cd10f15138111b73ca010fbeb41f0dcbc39ca2cbabc1b02c49f356e313cb20a",
+  "version": "axiaccess 2.1.0",
+  "fixtureType": "Owned child-main-thread fault injection; all other app processes untouched",
+  "cases": [
+    {
+      "controlledMainThreadStall": false,
+      "parentSignal": "SIGTERM",
+      "observedApplicationActions": false,
+      "sourceRevision": "working-tree-parent-lease",
+      "ownedWorkerPid": 3164961,
+      "parentPid": 3164959,
+      "parentExitCode": -15,
+      "parentExitMs": 1.2,
+      "workerAliveAfter4500ms": false,
+      "workerObservedExitMs": 1.6,
+      "scope": "Controlled runnable-watchdog/paused-main-thread fixture; not a natural AX/AT-SPI provider hang"
+    },
+    {
+      "controlledMainThreadStall": true,
+      "parentSignal": "SIGTERM",
+      "observedApplicationActions": false,
+      "sourceRevision": "working-tree-parent-lease",
+      "ownedWorkerPid": 3164966,
+      "parentPid": 3164964,
+      "mainThreadTraceStopped": true,
+      "parentExitCode": -15,
+      "parentExitMs": 1.3,
+      "workerAliveAfter4500ms": false,
+      "workerObservedExitMs": 1.6,
+      "scope": "Controlled runnable-watchdog/paused-main-thread fixture; not a natural AX/AT-SPI provider hang"
+    }
+  ]
+}

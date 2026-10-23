@@ -140,22 +140,34 @@ impl NativeWorker {
     }
 }
 
+/// This is the worker's private parent-lifetime lease, not an agent operation.
+/// Never run cleanup/atexit handlers after its sole owning parent closes stdin:
+/// an unrelated native call can hold those locks on the main observation thread.
+fn end_owned_worker(code:i32)->!{
+    #[cfg(unix)]{unsafe extern "C"{fn _exit(code:i32)->!;}unsafe{_exit(code)}}
+    #[cfg(windows)]{unsafe{let _=windows::Win32::System::Threading::TerminateProcess(windows::Win32::System::Threading::GetCurrentProcess(),code as u32);}std::process::abort()}
+    #[cfg(not(any(unix,windows)))]std::process::exit(code)
+}
+
 pub fn worker_loop() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::{BufRead, Read, Write};
-    let mut input = std::io::BufReader::new(std::io::stdin());
+    // The coordinator owns the only write end of this private pipe. A dedicated
+    // blocking reader notices kernel EOF even while native main-thread work is
+    // stuck. No PID polling, process-name sweep or observed-app signal is used.
+    let (sender,requests)=std::sync::mpsc::sync_channel::<Vec<u8>>(1);
+    std::thread::Builder::new().name("axiaccess-parent-lease".into()).stack_size(128*1024).spawn(move||{
+        let mut input=std::io::BufReader::new(std::io::stdin());
+        loop{
+            let mut bytes=Vec::new();let count=match input.by_ref().take((MAX_FRAME+1)as u64).read_until(b'\n',&mut bytes){Ok(count)=>count,Err(_)=>end_owned_worker(1)};
+            if count==0{end_owned_worker(0);}
+            if bytes.len()>MAX_FRAME||bytes.last()!=Some(&b'\n'){end_owned_worker(1);}
+            // NativeWorker serializes requests. Reject a malformed peer's
+            // extra queue rather than blocking this lifetime watcher on send.
+            if sender.try_send(bytes).is_err(){end_owned_worker(1);}
+        }
+    })?;
     let mut output = std::io::stdout();
-    loop {
-        let mut bytes = Vec::new();
-        let count = input
-            .by_ref()
-            .take((MAX_FRAME + 1) as u64)
-            .read_until(b'\n', &mut bytes)?;
-        if count == 0 {
-            break;
-        }
-        if bytes.len() > MAX_FRAME {
-            return Err("Worker request too large".into());
-        }
+    for bytes in requests {
         let value: Value = serde_json::from_slice(&bytes)?;
         let id = value["id"].clone();
         let result = (|| -> Result<Value, String> {
