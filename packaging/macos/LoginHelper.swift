@@ -8,8 +8,9 @@ let config = FileManager.default.homeDirectoryForCurrentUser.appendingPathCompon
 guard FileManager.default.fileExists(atPath: config.path) else { exit(78) }
 let process = Process()
 process.executableURL = binary
-let listen = UserDefaults(suiteName: "com.axiowl.axiaccess.sender")?.string(forKey: "listenAddress") ?? "127.0.0.1:8765"
-process.arguments = ["sender", "--config", config.path, "--listen", listen]
+// The shared private config is authoritative for the bind address. A GUI or
+// CLI change must survive login; no separate UserDefaults override is injected.
+process.arguments = ["sender", "--config", config.path]
 process.standardOutput = FileHandle.nullDevice
 process.standardError = FileHandle.nullDevice
 do { try process.run(); process.waitUntilExit(); exit(process.terminationStatus) }

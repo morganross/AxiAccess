@@ -41,6 +41,14 @@ static EVENT_REVISION: AtomicU64 = AtomicU64::new(0);
 static EVENT_ACTIVE: AtomicBool = AtomicBool::new(false);
 static EVENT_ERROR: Mutex<Option<String>> = Mutex::new(None);
 static EVENT_WAIT: (Mutex<()>, Condvar) = (Mutex::new(()), Condvar::new());
+static OBSERVED_APP_OWNERS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn remember_app(bus: &str, owner: &str) {
+    if let Ok(mut owners)=OBSERVED_APP_OWNERS.get_or_init(||Mutex::new(HashSet::new())).lock() {
+        if owners.len()>=512 {owners.clear(); event_changed();}
+        owners.insert(format!("{bus}/{owner}"));
+    }
+}
 
 fn event_changed() {
     let _guard = EVENT_WAIT.0.lock().ok();
@@ -147,7 +155,17 @@ async fn event_session() -> Result<(), String> {
                 .member()
                 .is_some_and(|name| name.as_str() == "NameOwnerChanged")
         {
-            event_changed();
+            // Query connections also create/destroy unique bus names. Those
+            // are not desktop changes and must not wake every observation.
+            if let Ok((name,old,_new))=message.body().deserialize::<(String,String,String)>() {
+                if name==REGISTRY {
+                    event_changed();
+                    return Err("event_stream_gap: accessibility registry ownership changed".into());
+                }
+                let known=OBSERVED_APP_OWNERS.get_or_init(||Mutex::new(HashSet::new())).lock()
+                    .map(|mut owners|owners.remove(&format!("{}/{}",client.bus_id,old))).unwrap_or(false);
+                if known {event_changed();}
+            }
         }
     }
     Err("event_stream_gap: accessibility bus disconnected".into())
@@ -476,6 +494,7 @@ impl Client {
                     continue;
                 }
             };
+            remember_app(&self.bus_id, &app.owner);
             let app_name = match self.name(&app).await {
                 Ok(name) => name,
                 Err(error) => { result.issues.push(error); "unknown-app".into() }

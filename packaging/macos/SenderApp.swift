@@ -2,7 +2,7 @@ import AppKit
 import ServiceManagement
 
 // This UI configures AxiAccess itself. It never drives another application's UI.
-final class SenderApp: NSObject, NSApplicationDelegate {
+final class SenderApp: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var window: NSWindow!
     private var stateLabel: NSTextField!
     private var startup: NSButton!
@@ -11,6 +11,7 @@ final class SenderApp: NSObject, NSApplicationDelegate {
     private var output: Pipe?
     private var logText = ""
     private var busy = false
+    private var endpointHasEdits = false
     private let queue = DispatchQueue(label: "com.axiowl.axiaccess.management")
     private var binary: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/axiaccess") }
     private var config: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/AxiAccess/sender.json") }
@@ -31,8 +32,9 @@ final class SenderApp: NSObject, NSApplicationDelegate {
         let explanation = NSTextField(wrappingLabelWithString: "AxiAccess reads app windows and accessibility text. It cannot click, type, focus, scroll or change observed apps. Connections require your sender credential and certificate trust.")
         stateLabel = NSTextField(wrappingLabelWithString: "Stopped. Start creates private sender configuration if needed. No existing credentials or chats are modified.")
         let endpointLabel = NSTextField(labelWithString: "Listen address (loopback by default; set a LAN/VM address for direct TLS):")
-        endpoint = NSTextField(string: UserDefaults.standard.string(forKey: "listenAddress") ?? "127.0.0.1:8765")
+        endpoint = NSTextField(string: "127.0.0.1:8765")
         endpoint.placeholderString = "127.0.0.1:8765"
+        endpoint.delegate = self
         let controls = NSStackView()
         controls.orientation = .horizontal
         for (name, selector) in [("Start sender", #selector(startSender)), ("Stop sender", #selector(stopSender)), ("Accessibility settings", #selector(openAccessibility))] {
@@ -47,6 +49,48 @@ final class SenderApp: NSObject, NSApplicationDelegate {
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24), stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24), stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 24)])
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        loadStoredEndpoint()
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        if let field = notification.object as? NSTextField, field === endpoint { endpointHasEdits = true }
+    }
+    // Management commands own config validation and atomic replacement. The UI
+    // never reads a private config or serializes pairing keys/tokens itself.
+    private func management(_ arguments: [String], publicOutput: Bool = false) throws -> Data {
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = arguments + ["--config", config.path]
+        let pipe = publicOutput ? Pipe() : nil
+        if let pipe { process.standardOutput = pipe } else { process.standardOutput = FileHandle.nullDevice }
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let data = pipe?.fileHandleForReading.readDataToEndOfFile() ?? Data()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 && data.count <= 262144 else {
+            throw NSError(domain: "AxiAccess", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "AxiAccess configuration failed. Existing identity and credentials were retained; check the installed CLI status."])
+        }
+        return data
+    }
+    private func persistListen(_ listen: String) throws {
+        _ = try management(["configure", "--listen", listen])
+    }
+    private func loadStoredEndpoint() {
+        guard FileManager.default.fileExists(atPath: config.path) else { return }
+        busy = true
+        stateLabel.stringValue = "Loading the saved sender address…"
+        queue.async {
+            do {
+                let data = try self.management(["status"], publicOutput: true)
+                let value = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let listen = value?["listen"] as? String
+                DispatchQueue.main.async {
+                    self.busy = false
+                    if !self.endpointHasEdits, let listen { self.endpoint.stringValue = listen }
+                    self.stateLabel.stringValue = "Saved configuration loaded. This does not claim that a sender is running or Accessibility permission is granted."
+                }
+            } catch { DispatchQueue.main.async { self.busy = false; self.stateLabel.stringValue = error.localizedDescription } }
+        }
     }
 
     @objc private func startSender() {
@@ -57,7 +101,6 @@ final class SenderApp: NSObject, NSApplicationDelegate {
         }
         let listen = endpoint.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !listen.isEmpty && listen.utf8.count < 256 else { stateLabel.stringValue = "Enter an IP address and port, for example 127.0.0.1:8765."; return }
-        UserDefaults.standard.set(listen, forKey: "listenAddress")
         busy = true
         stateLabel.stringValue = "Preparing private AxiAccess sender…"
         queue.async {
@@ -74,12 +117,13 @@ final class SenderApp: NSObject, NSApplicationDelegate {
                     setup.waitUntilExit()
                     guard setup.terminationStatus == 0 else { throw NSError(domain: "AxiAccess", code: Int(setup.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Private sender setup failed. Use the installed CLI for its typed status."]) }
                 }
+                try self.persistListen(listen)
                 DispatchQueue.main.async {
                     self.busy = false
                     do {
                         let process = Process()
                         process.executableURL = self.binary
-                        process.arguments = ["sender", "--config", self.config.path, "--listen", listen]
+                        process.arguments = ["sender", "--config", self.config.path]
                         process.standardOutput = FileHandle.nullDevice
                         process.standardError = FileHandle.nullDevice
                         process.terminationHandler = { process in DispatchQueue.main.async {
@@ -104,20 +148,20 @@ final class SenderApp: NSObject, NSApplicationDelegate {
             stateLabel.stringValue = "Start sender once to create its private configuration, then enable login startup."
             return
         }
-        if enable { UserDefaults.standard.set(endpoint.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "listenAddress") }
-        if enable, let process = sender, process.isRunning {
-            busy = true
-            startup.isEnabled = false
-            stateLabel.stringValue = "Stopping this window's sender before enabling login startup…"
-            process.terminate()
-            queue.async { process.waitUntilExit(); DispatchQueue.main.async {
-                self.busy = false
-                self.startup.isEnabled = true
-                self.applyStartup(enable: true)
-            } }
-            return
+        if !enable { applyStartup(enable: false); return }
+        let listen = endpoint.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let owned = sender
+        busy = true
+        startup.isEnabled = false
+        stateLabel.stringValue = "Saving the sender address before enabling login startup…"
+        if let owned, owned.isRunning { owned.terminate() }
+        queue.async {
+            if let owned, owned.isRunning { owned.waitUntilExit() }
+            do {
+                try self.persistListen(listen)
+                DispatchQueue.main.async { self.busy = false; self.startup.isEnabled = true; self.applyStartup(enable: true) }
+            } catch { DispatchQueue.main.async { self.busy = false; self.startup.isEnabled = true; self.startup.state = .off; self.stateLabel.stringValue = error.localizedDescription } }
         }
-        applyStartup(enable: enable)
     }
     private func applyStartup(enable: Bool) {
         let service = SMAppService.agent(plistName: "com.axiowl.axiaccess.sender.plist")

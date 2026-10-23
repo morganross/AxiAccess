@@ -1,0 +1,17 @@
+[
+  {
+    "image": "axiaccess",
+    "architecture": "arm64",
+    "minimumSystemVersion": "13.0"
+  },
+  {
+    "image": "AxiAccessSender",
+    "architecture": "arm64",
+    "minimumSystemVersion": "13.0"
+  },
+  {
+    "image": "axiaccess-login",
+    "architecture": "arm64",
+    "minimumSystemVersion": "13.0"
+  }
+]

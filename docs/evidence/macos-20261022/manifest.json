@@ -1,0 +1,87 @@
+{
+  "sourceCommit": "b55df997cf62f85290e1e69885b8020c3915a6a3",
+  "sourceTreeSha256": "dc0792dc702e37ac161e10aa5c8f2f0fbdd2eb24e46e5a8aa65a62488bd9f734",
+  "sourceDirty": false,
+  "lockSha256": "244e2072bef0082a304bd22b03ef868e7d279dcccf11bf8591097fc149b52131",
+  "recipeSha256": "7e2fa3066234a5783c28e3d58d6640168852125e40c8ffd2c6de7e8b60162324",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "macos": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83\n",
+  "target": "aarch64-apple-darwin",
+  "minimumSystemVersion": "13.0",
+  "artifact": "AxiAccess-Sender-macOS-arm64-2.1.0.pkg",
+  "installerBytes": 3268883,
+  "installerSha256": "5efe6615084c63a1c588b32355c6352dc38f37fae924e8c02f62e0bda1ab9c2e",
+  "applicationBytes": 7279089,
+  "files": [
+    {
+      "path": "Contents/CodeResources",
+      "bytes": 1695,
+      "sha256": "20d1b4772c482de12a33fb4367b2c6bfac302a426201532da0ff3212e317c539"
+    },
+    {
+      "path": "Contents/Info.plist",
+      "bytes": 817,
+      "sha256": "a67c6f5605c88b76d5a45a34b3ae93643ba096035259dfc334506bf176a71d5d"
+    },
+    {
+      "path": "Contents/Library/LaunchAgents/com.axiowl.axiaccess.sender.plist",
+      "bytes": 514,
+      "sha256": "04a3baed769400ae9abb499af9b2e310d6a3f680e90d4fd83a932af3ac169ab3"
+    },
+    {
+      "path": "Contents/MacOS/AxiAccessSender",
+      "bytes": 128336,
+      "sha256": "cac6db588d548b2520f61415be846a69261254ed4cfa13575e66a233541af569"
+    },
+    {
+      "path": "Contents/MacOS/axiaccess",
+      "bytes": 7068672,
+      "sha256": "a6a1438ceecb716cd812cc4d5d101e993c218b92688ca7ede8f5f2c2090f50f4"
+    },
+    {
+      "path": "Contents/MacOS/axiaccess-login",
+      "bytes": 73136,
+      "sha256": "69a453267c98c681a482b9b92839059bab5ddb3ad92c6951bca6359d7b38d1f3"
+    },
+    {
+      "path": "Contents/Resources/source.json",
+      "bytes": 722,
+      "sha256": "5a351a3b9d9789d75d99edcfcbe0f7cbabbef71ea372de561b5f31077921b8ef"
+    },
+    {
+      "path": "Contents/Resources/uninstall.sh",
+      "bytes": 1549,
+      "sha256": "55cc0c09b64b12ac2a815b92421264c2da075392da009c02997b49a1067faa7b"
+    },
+    {
+      "path": "Contents/_CodeSignature/CodeResources",
+      "bytes": 3648,
+      "sha256": "e04504c439b5dbf5b51b3e45c709e71bd1e128123f88cbb2f274f04aa0a49807"
+    }
+  ],
+  "machoTargets": [
+    {
+      "image": "axiaccess",
+      "architecture": "arm64",
+      "minimumSystemVersion": "13.0"
+    },
+    {
+      "image": "AxiAccessSender",
+      "architecture": "arm64",
+      "minimumSystemVersion": "13.0"
+    },
+    {
+      "image": "axiaccess-login",
+      "architecture": "arm64",
+      "minimumSystemVersion": "13.0"
+    }
+  ],
+  "signed": true,
+  "notarized": true,
+  "stapled": true,
+  "installed": false,
+  "runtimePython": false,
+  "runtimeNode": false,
+  "daemonIncluded": false,
+  "published": false
+}

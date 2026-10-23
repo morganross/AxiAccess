@@ -9,6 +9,7 @@ param(
     [string]$DlibPath = $env:AXIACCESS_DLIB_PATH,
     [string]$CargoPath = $env:AXIACCESS_CARGO_PATH,
     [string]$RustcPath = $env:AXIACCESS_RUSTC_PATH,
+    [string]$DotNetRoot = $env:AXIACCESS_DOTNET_ROOT,
     [string]$SourceCommit = $env:AXIACCESS_SOURCE_COMMIT,
     [string]$ReleaseTag = $env:AXIACCESS_RELEASE_TAG
 )
@@ -56,6 +57,21 @@ function Sign([string]$File,[string]$Label){
     if($signature.Status -ne 'Valid' -or !$signature.SignerCertificate -or !$signature.TimeStamperCertificate -or $signature.SignerCertificate.Subject -cne $policy.expected_signer_subject){throw ('Signature, timestamp or publisher verification failed: '+$Label)}
     return @{status=[string]$signature.Status;publisher=$signature.SignerCertificate.Subject;thumbprint=$signature.SignerCertificate.Thumbprint;timestampPublisher=$signature.TimeStamperCertificate.Subject}
 }
+function Get-VerifiedSignedNative([string]$File,[string]$Evidence,[string]$UnsignedHash){
+    if(!(Test-Path -LiteralPath $File -PathType Leaf) -or !(Test-Path -LiteralPath $Evidence -PathType Leaf)){return $null}
+    $saved=Get-Content -LiteralPath $Evidence -Raw|ConvertFrom-Json
+    if($saved.status -cne 'signed' -or $saved.source_git_head -cne $SourceCommit -or $saved.signing_policy_sha256 -ine (Hash $SigningSettings)){return $null}
+    $matching=@($saved.files|Where-Object{$_.status -ceq 'signed' -and $_.unsigned_sha256 -ieq $UnsignedHash})
+    if($matching.Count -ne 1){return $null}
+    $record=$matching[0]
+    if((Hash $File) -ine $record.signed_sha256){throw 'Retained signed native bytes differ from their successful signing receipt.'}
+    $signature=Get-AuthenticodeSignature -LiteralPath $File
+    $policy=Get-Content -LiteralPath $SigningSettings -Raw|ConvertFrom-Json
+    if($signature.Status -ne 'Valid' -or !$signature.SignerCertificate -or !$signature.TimeStamperCertificate -or $signature.SignerCertificate.Subject -cne $policy.expected_signer_subject -or $signature.SignerCertificate.Thumbprint -ine $record.certificate_thumbprint -or $signature.TimeStamperCertificate.Subject -cne $record.timestamp_subject){throw 'Retained native signature no longer matches its successful receipt and publisher policy.'}
+    $operations=@($record.attempts|Where-Object{$_.status -ceq 'signed' -and $_.operation_id -match '^[a-f0-9-]{36}$'})
+    if($operations.Count -ne 1){throw 'Retained native signing operation evidence is incomplete.'}
+    return @{status='Valid';publisher=$signature.SignerCertificate.Subject;thumbprint=$signature.SignerCertificate.Thumbprint;timestampPublisher=$signature.TimeStamperCertificate.Subject;reusedExactSignedBytes=$true;originalOperationId=$operations[0].operation_id;originalEvidenceSha256=Hash $Evidence}
+}
 function Read-MsiMetadata([string]$Path){
     $installer=New-Object -ComObject WindowsInstaller.Installer
     $database=$null
@@ -65,15 +81,15 @@ function Read-MsiMetadata([string]$Path){
         foreach($name in @('ProductName','ProductCode','ProductVersion','AXIACCESS_SOURCE_COMMIT','AXIACCESS_INPUT_DIGEST')){
             $view=$database.OpenView(('SELECT `Value` FROM `Property` WHERE `Property` = '''+$name+''''))
             $record=$null
-            try{$view.Execute();$record=$view.Fetch();if(!$record){throw ('MSI identity property missing: '+$name)};$values[$name]=$record.StringData(1)}finally{if($record){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record)};$view.Close();[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)}
+            try{[void]$view.Execute();$record=$view.Fetch();if(!$record){throw ('MSI identity property missing: '+$name)};$values[$name]=$record.StringData(1)}finally{if($record){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record)};[void]$view.Close();[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)}
         }
         $files=@();$view=$database.OpenView('SELECT `File`, `FileName`, `FileSize` FROM `File`')
         try{
-            $view.Execute()
+            [void]$view.Execute()
             while($record=$view.Fetch()){
                 try{$files+=@{id=$record.StringData(1);name=$record.StringData(2);bytes=$record.IntegerData(3)}}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record)}
             }
-        }finally{$view.Close();[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)}
+        }finally{[void]$view.Close();[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)}
         $values.files=$files
         return $values
     }finally{if($database){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database)};[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)}
@@ -89,7 +105,16 @@ try{
     if(!$DlibPath){$DlibPath=Join-Path $signingTools 'Microsoft.ArtifactSigning.Client-1.0.128\bin\x64\Azure.CodeSigning.Dlib.dll'}
     if(!$CargoPath){$CargoPath=(Get-Command cargo.exe -ErrorAction Stop).Source}
     if(!$RustcPath){$RustcPath=Join-Path (Split-Path $CargoPath -Parent) 'rustc.exe'}
-    foreach($file in @((Join-Path $WixDirectory 'candle.exe'),(Join-Path $WixDirectory 'light.exe'),$SigningScript,$SigningSettings,$SignToolPath,$DlibPath,$CargoPath,$RustcPath)){if(!(Test-Path -LiteralPath $file -PathType Leaf) -or (Get-Item -LiteralPath $file).Length -eq 0){throw ('Required release tool is absent or empty: '+$file)}}
+    if(!$DotNetRoot){$DotNetRoot=$env:DOTNET_ROOT}
+    if(!$DotNetRoot){$DotNetRoot=Join-Path $env:LOCALAPPDATA 'AxiOwlBuildTools\dotnet'}
+    $dotnet=Join-Path $DotNetRoot 'dotnet.exe'
+    foreach($file in @((Join-Path $WixDirectory 'candle.exe'),(Join-Path $WixDirectory 'light.exe'),$SigningScript,$SigningSettings,$SignToolPath,$DlibPath,$CargoPath,$RustcPath,$dotnet)){if(!(Test-Path -LiteralPath $file -PathType Leaf) -or (Get-Item -LiteralPath $file).Length -eq 0){throw ('Required release tool is absent or empty: '+$file)}}
+    # Artifact Signing's native Dlib hosts .NET 8. This is a build prerequisite,
+    # never a dependency of the installed native AxiAccess sender.
+    $env:DOTNET_ROOT=$DotNetRoot;$env:DOTNET_ROOT_X64=$DotNetRoot
+    $env:PATH=$DotNetRoot+';'+$env:PATH
+    $dotnetRuntimes=(& $dotnet --list-runtimes|Out-String).Trim()
+    if($LASTEXITCODE -ne 0 -or $dotnetRuntimes -notmatch '(?m)^Microsoft\.NETCore\.App 8\.') {throw 'Selected Artifact Signing host does not provide the required .NET 8 runtime.'}
     $actualCommit=(& git -C $root rev-parse HEAD).Trim()
     if($LASTEXITCODE -ne 0 -or $actualCommit -notmatch '^[a-f0-9]{40}$'){throw 'Unable to identify AxiAccess source HEAD.'}
     if($SourceCommit -and $SourceCommit -cne $actualCommit){throw 'Requested source commit does not match the checked out source.'}
@@ -107,7 +132,7 @@ try{
     if($LASTEXITCODE -ne 0 -or !$cargoVersion){throw 'Cargo did not report its identity.'}
     $rustcVersion=(& $RustcPath -Vv|Out-String).Trim()
     if($LASTEXITCODE -ne 0 -or !$rustcVersion){throw 'Rust compiler did not report its identity.'}
-    $recipe=[ordered]@{sourceCommit=$SourceCommit;sourceTreeSha256=$sourceDigest;cargoLockSha256=$lockDigest;target='x86_64-pc-windows-msvc';cargo=$cargoVersion;rustc=$rustcVersion;profile='release';rustflags='-C target-feature=+crt-static';entrypointSha256=Hash $PSCommandPath;wixSourceSha256=Hash (Join-Path $root 'packaging\windows\sender.wxs');wixCandleSha256=Hash (Join-Path $WixDirectory 'candle.exe');wixLightSha256=Hash (Join-Path $WixDirectory 'light.exe');sessionHelperSha256=Hash (Join-Path $root 'packaging\windows\session.ps1');signingPolicySha256=Hash $SigningSettings;signingHelperSha256=Hash $SigningScript;signToolSha256=Hash $SignToolPath;signingDlibSha256=Hash $DlibPath}
+    $recipe=[ordered]@{sourceCommit=$SourceCommit;sourceTreeSha256=$sourceDigest;cargoLockSha256=$lockDigest;target='x86_64-pc-windows-msvc';cargo=$cargoVersion;rustc=$rustcVersion;profile='release';rustflags='-C target-feature=+crt-static';entrypointSha256=Hash $PSCommandPath;wixSourceSha256=Hash (Join-Path $root 'packaging\windows\sender.wxs');wixCandleSha256=Hash (Join-Path $WixDirectory 'candle.exe');wixLightSha256=Hash (Join-Path $WixDirectory 'light.exe');sessionHelperSha256=Hash (Join-Path $root 'packaging\windows\session.ps1');signingPolicySha256=Hash $SigningSettings;signingHelperSha256=Hash $SigningScript;signToolSha256=Hash $SignToolPath;signingDlibSha256=Hash $DlibPath;signingRuntimeRoot=$DotNetRoot;signingRuntimes=$dotnetRuntimes;signingRuntimeHostSha256=Hash $dotnet}
     Write-Json (Join-Path $OutputDirectory 'build-recipe.json') $recipe
     $inputDigest=Hash (Join-Path $OutputDirectory 'build-recipe.json')
     $cache=Join-Path $root ('target\sender-cache\'+$inputDigest)
@@ -129,9 +154,21 @@ try{
     Copy-Item -LiteralPath (Join-Path $OutputDirectory 'build-recipe.json') -Destination $cache
     $stage=Join-Path $OutputDirectory 'payload'
     New-Item -ItemType Directory -Force -Path $stage|Out-Null
-    Copy-Item -LiteralPath (Join-Path $cache 'axiaccess.exe') -Destination (Join-Path $stage 'axiaccess.exe')
+    $nativePath=Join-Path $stage 'axiaccess.exe'
+    $nativeEvidence=Join-Path $OutputDirectory 'sender-signature.json'
+    $nativeSignature=Get-VerifiedSignedNative $nativePath $nativeEvidence (Hash (Join-Path $cache 'axiaccess.exe'))
+    if(!$nativeSignature){
+        if((Test-Path -LiteralPath $nativePath) -and (Test-Path -LiteralPath $nativeEvidence)){
+            $retained=Join-Path $OutputDirectory ('retained-signatures\'+(Hash $nativePath))
+            New-Item -ItemType Directory -Force -Path $retained|Out-Null
+            Copy-Item -LiteralPath $nativePath -Destination $retained
+            Copy-Item -LiteralPath $nativeEvidence -Destination (Join-Path $retained 'sender-signature.json')
+        }
+        Copy-Item -LiteralPath (Join-Path $cache 'axiaccess.exe') -Destination $nativePath
+    }
     Copy-Item -LiteralPath (Join-Path $root 'packaging\windows\session.ps1') -Destination $stage
-    $nativeSignature=Sign (Join-Path $stage 'axiaccess.exe') 'sender'
+    if($nativeSignature){Write-Host 'Reused exact signed native bytes and their original successful signing evidence.'}
+    else{$nativeSignature=Sign $nativePath 'sender'}
     $payload=[ordered]@{schemaVersion=1;product='AxiAccess Sender';version=$version;sourceCommit=$SourceCommit;sourceTreeSha256=$sourceDigest;inputDigest=$inputDigest;architecture='x86_64';minimumOs='Windows 10 or Windows Server 2016 with a graphical user session';minimumOsSource='https://doc.rust-lang.org/rustc/platform-support.html';runtime='native Rust, application-local static CRT';userSessionOnly=$true;observationOnly=$true;defaultListen='127.0.0.1:8765';files=@(@{path='axiaccess.exe';sha256=Hash (Join-Path $stage 'axiaccess.exe');bytes=(Get-Item (Join-Path $stage 'axiaccess.exe')).Length;signature=$nativeSignature},@{path='session.ps1';sha256=Hash (Join-Path $stage 'session.ps1');bytes=(Get-Item (Join-Path $stage 'session.ps1')).Length})}
     Write-Json (Join-Path $stage 'payload-manifest.json') $payload
     $msi=Join-Path $OutputDirectory ('AxiAccess-Sender-Windows-x64-'+$version+'.msi')

@@ -53,6 +53,29 @@ Actual native worker calls returned `nativeRust:true`, `pythonRequired:false`, `
 
 After the shared nullable-state/lazy-text additions and API-derived minimum adjustment, the native arm64/macOS13 release build passed in 50.52 seconds. Actual Mach-O load commands report `minos 13.0`. The precommit binary is 7,091,632 bytes, SHA256 `2ae724b1ba91927d700f53d9587ca0cb0a5450b3717e7b0aef5b424ac3346cd0`. A real stdio MCP client completed initialize, listed all seven read-only tools, called `access_capabilities`, and received a correctly structured `isError:true` / `permission_denied` from `access_windows`. This is recorded in [MCP evidence](../evidence/macos-20261022/mcp-precommit.json); it is not a successful AX window read or an installed framework/model conversation. The precommit build accurately reports `sourceRevision:unrecorded`; the canonical release embeds its actual published source revision instead.
 
-No installed sender, PKG signature/notarization, reinstall, login startup, successful native text read or all-framework tool pass is claimed at this point. Final artifact source/hash receipts and actual observations must be added before reporting completion.
+## Final published-source artifact and installation
+
+The canonical `bash scripts/release-macos.sh` completed successfully in **98.56 seconds** from clean published source `b55df997cf62f85290e1e69885b8020c3915a6a3`. Native Rust compilation took 43.11 seconds. The exact sender app and offline PKG passed inside-out strict code signing, Apple notarization, ticket stapling/validation and Gatekeeper assessment. The existing keychain search list was restored; no signing key, certificate, account credential, access-control policy or trust anchor was created or replaced.
+
+| Item | Actual result |
+| --- | --- |
+| Artifact | `AxiAccess-Sender-macOS-arm64-2.1.0.pkg` |
+| Installer bytes | 3,268,883 |
+| SHA256 | `5efe6615084c63a1c588b32355c6352dc38f37fae924e8c02f62e0bda1ab9c2e` |
+| Logical application bytes | 7,279,089 |
+| Signed native observer bytes | 7,068,672 |
+| All three Mach-O minimums | arm64 / macOS13.0 |
+| First native PKG installation | Exit0, 1.92 seconds |
+| Same-version reinstall | Exit0, 1.85 seconds |
+| Installed app identity | `com.axiowl.axiaccess.sender`, version2.1.0 |
+| Actual installed image | Every manifest file matches its signed packaged SHA256 |
+
+Receipts: [manifest](../evidence/macos-20261022/manifest.json), [application notarization](../evidence/macos-20261022/notary-app.json), [PKG notarization](../evidence/macos-20261022/notary-pkg.json), [package signature](../evidence/macos-20261022/package-signature.txt), [Mach-O target checks](../evidence/macos-20261022/macho-targets.json), [system dependencies](../evidence/macos-20261022/native-dependencies.txt), [installation/reinstall and preservation](../evidence/macos-20261022/installation.json).
+
+The actual installed signed observer, invoked as the original user through SSH, still reports `accessibilityPermissionRequired` and rejects windows with explicit `permissionDenied`. No permission grant or native text-read success is claimed. The app's GUI-session permission context, first-run configuration UI, login-item registration, macOS13 runtime execution (the build host is macOS26), native notification delivery, protected-field behavior and all-framework tool conversations remain unverified. Installing the sender does not silently create pairing credentials, enable login startup or request Accessibility approval.
+
+The [installed signed MCP executable](../evidence/macos-20261022/installed-mcp.json) also completed initialize, listed the seven read-only tools and returned actual capabilities. Its protocol response reports the exact embedded published `sourceRevision:b55df997cf62f85290e1e69885b8020c3915a6a3`; this verifies the canonical source embedding instead of substituting the earlier unrecorded precommit build.
+
+All **207 original chat identities**, **686 preference keys** and **eight tracked credential/signing files** remain after install/reinstall; the eight protected files are byte-identical to the immediate baseline. Sender configuration was absent before and remains absent. Keychain search order is unchanged. Private baseline contents and their secret-file hashes remain private and were not published with these summary receipts. The installer payload contains only its owned application, with no daemon, provider-store, startup-service or user-data installation scripts.
 
 The Mac had 6,766,690,304 free bytes at initial source admission. No unrelated build cache, chat or credential data was deleted to make space.

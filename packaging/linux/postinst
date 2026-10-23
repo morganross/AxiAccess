@@ -2,6 +2,15 @@
 set -eu
 case "${1:-}" in
     configure|abort-upgrade|abort-remove|abort-deconfigure)
+        # dpkg preserves existing directory modes. Repair the first development
+        # candidate's umask-derived group write only in this package's exact
+        # root-owned directories; keep admin overrides and stricter permissions.
+        for directory in /usr/lib/axiaccess /usr/share/axiaccess /usr/share/doc/axiaccess-sender; do
+            [ -d "$directory" ] && [ ! -L "$directory" ] || continue
+            if /usr/bin/dpkg-statoverride --list "$directory" >/dev/null 2>&1; then continue; fi
+            [ "$(/usr/bin/stat -c '%u:%g' "$directory")" = 0:0 ] || continue
+            /usr/bin/chmod go-w -- "$directory"
+        done
         /usr/lib/axiaccess/install-lifecycle resume
         ;;
 esac

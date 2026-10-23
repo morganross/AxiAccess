@@ -130,6 +130,10 @@ Description: Native read-only semantic desktop observation sender
  Reads application accessibility APIs in a selected graphical user session.
  No input injection, Python runtime, IDE dependency or AxiOwl daemon changes.
 ''')
+        # TemporaryDirectory starts0700 and a developer's umask may be002.
+        # Neither belongs in package-owned program directory metadata.
+        for directory in [stage, *sorted(p for p in stage.rglob('*') if p.is_dir())]:
+            directory.chmod(0o755)
         artifact = out / f'AxiAccess_{version}_amd64.deb'
         run(['dpkg-deb', '--root-owner-group', '--uniform-compression', '-Zxz', '-z6', '--build', stage, artifact])
     receipt.update(status='packaged', artifact=artifact.name, artifactBytes=artifact.stat().st_size,

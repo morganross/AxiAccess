@@ -1,0 +1,128 @@
+{
+  "source": "b55df997cf62f85290e1e69885b8020c3915a6a3",
+  "packageSha256": "5efe6615084c63a1c588b32355c6352dc38f37fae924e8c02f62e0bda1ab9c2e",
+  "before": {
+    "chatIdentities": 207,
+    "preferenceKeys": 686,
+    "protectedFilesPresent": 8
+  },
+  "cycles": [
+    {
+      "phase": "install",
+      "exit": 0,
+      "elapsedSeconds": 1.9205344999999998,
+      "installedVersion": "2.1.0",
+      "allManifestFilesMatch": true
+    },
+    {
+      "phase": "same-version-reinstall",
+      "exit": 0,
+      "elapsedSeconds": 1.8451520000000001,
+      "installedVersion": "2.1.0",
+      "allManifestFilesMatch": true
+    }
+  ],
+  "permission": "accessibilityPermissionRequired",
+  "nativeRead": {
+    "exit": 0,
+    "context": "original-user CLI under SSH; installed signed image",
+    "responses": [
+      {
+        "id": "installed-capabilities",
+        "result": {
+          "applicationActivation": false,
+          "backend": "AXUIElement",
+          "eventMode": "AXObserver invalidation with bounded on-demand reconciliation",
+          "events": {
+            "coverage": "application notifications and inspected elements; unsupported notifications require bounded reconciliation",
+            "droppedSubscriptionRequests": 0,
+            "fullTreePolling": false,
+            "maximumApplications": 64,
+            "maximumWatchedElementsPerApplication": 256,
+            "mode": "AXObserver",
+            "registrationErrors": 0,
+            "revision": 1,
+            "subscribedApplications": 0,
+            "successfulRegistrations": 0
+          },
+          "limits": {
+            "depth": 64,
+            "messagingTimeoutMs": 250,
+            "nativeWorkDeadlineMs": 2400,
+            "nodes": 250,
+            "rawNodes": 5000,
+            "retainedNativeElements": 4096,
+            "textBytes": 49152,
+            "workerDeadlineMs": 3000
+          },
+          "nativeEvents": false,
+          "nativeRust": true,
+          "offscreenText": "when exposed by the application",
+          "offsetUnits": "AX text ranges use UTF-16 code units; returned counts use Unicode scalar values",
+          "permissionGranted": false,
+          "permissionPrompted": false,
+          "permissionStatus": "accessibilityPermissionRequired",
+          "protectedFields": "AXSecureTextField values and descendants excluded before text extraction",
+          "pythonRequired": false,
+          "readOnly": true,
+          "screenReaderFlagSupported": false,
+          "stuckProviderRecovery": "sender worker process isolation",
+          "supportsNativeEvents": true,
+          "uiActions": false,
+          "visibility": "unknown unless AXVisibleCharacterRange is exposed; generic occlusion is unknown",
+          "windows": "selected graphical user session AXWindows"
+        }
+      },
+      {
+        "error": "permissionDenied: Grant Accessibility permission to the installed AxiAccess Sender executable in System Settings > Privacy & Security > Accessibility; permission is not requested or changed by observation",
+        "id": "installed-windows"
+      }
+    ]
+  },
+  "after": {
+    "chatIdentities": 207,
+    "preferenceKeys": 686,
+    "protectedFilesPresent": 8,
+    "originalChatIdentitiesRetained": true,
+    "missingChatIdentities": 0,
+    "originalPreferenceKeysRetained": true,
+    "protectedFiles": {
+      ".codex/auth.json": {
+        "present": true,
+        "unchanged": true
+      },
+      ".copilot/config.json": {
+        "present": true,
+        "unchanged": true
+      },
+      ".local/share/opencode/auth.json": {
+        "present": true,
+        "unchanged": true
+      },
+      ".gemini/oauth_creds.json": {
+        "present": true,
+        "unchanged": true
+      },
+      ".gemini/google_accounts.json": {
+        "present": true,
+        "unchanged": true
+      },
+      ".config/axiowl/apple-signing/developer-id-installer.key.pem": {
+        "present": true,
+        "unchanged": true
+      },
+      ".config/axiowl/apple-signing/notary-api-key.p8": {
+        "present": true,
+        "unchanged": true
+      },
+      ".config/axiowl/apple-signing/developer-id-application.key.pem": {
+        "present": true,
+        "unchanged": true
+      }
+    }
+  },
+  "senderConfigurationRetained": true,
+  "senderConfigurationExisted": false,
+  "keychainSearchUnchanged": true,
+  "installed": true
+}
