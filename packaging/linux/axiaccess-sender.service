@@ -1,0 +1,21 @@
+[Unit]
+Description=AxiAccess read-only desktop observation sender
+Documentation=https://github.com/morganross/AxiAccess
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+ConditionEnvironment=|DISPLAY
+ConditionEnvironment=|WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/axiaccess setup --quiet
+ExecStart=/usr/bin/axiaccess sender
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=graphical-session.target

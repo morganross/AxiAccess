@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="$(var.ProductCode)" Name="AxiAccess Sender" Language="1033" Version="$(var.Version)" Manufacturer="AxiOwl" UpgradeCode="452C72D5-273D-4A27-918B-DA8EDC46D413">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" InstallPrivileges="limited" Platform="x64" Description="Read-only application and window observation in your desktop session" />
+    <MajorUpgrade DowngradeErrorMessage="A newer AxiAccess Sender is already installed." Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Property Id="ARPCONTACT" Value="https://github.com/morganross/AxiAccess" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/morganross/AxiAccess" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="AXIACCESS_SOURCE_COMMIT" Value="$(var.SourceCommit)" />
+    <Property Id="AXIACCESS_INPUT_DIGEST" Value="$(var.InputDigest)" />
+    <Condition Message="AxiAccess Sender installs for the current graphical user only. Omit ALLUSERS.">NOT ALLUSERS</Condition>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder"><Directory Id="ProgramsFolder" Name="Programs"><Directory Id="INSTALLFOLDER" Name="AxiAccess">
+        <Component Id="SenderComponent" Guid="A14E0564-40F2-4799-8A42-05022B4FCD98" Win64="yes">
+          <File Id="SenderExe" Source="$(var.StageDir)\axiaccess.exe" />
+          <RegistryValue Root="HKCU" Key="Software\AxiOwl\AxiAccess" Name="InstalledVersion" Type="string" Value="[ProductVersion]" KeyPath="yes" />
+          <RegistryValue Root="HKCU" Key="Software\AxiOwl\AxiAccess" Name="InstallRoot" Type="string" Value="[INSTALLFOLDER]" />
+          <RegistryValue Root="HKCU" Key="Software\AxiOwl\AxiAccess" Name="SourceCommit" Type="string" Value="$(var.SourceCommit)" />
+          <RemoveFolder Id="RemoveAxiAccessInstall" On="uninstall" />
+          <RemoveFolder Id="RemoveEmptyProgramsParent" Directory="ProgramsFolder" On="uninstall" />
+        </Component>
+        <Component Id="SessionComponent" Guid="CB445D93-998A-40CE-B448-BEBF6B02920C" Win64="yes">
+          <File Id="SessionScript" Source="$(var.StageDir)\session.ps1" />
+          <RegistryValue Root="HKCU" Key="Software\AxiOwl\AxiAccess" Name="SessionHelper" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+        <Component Id="ManifestComponent" Guid="C327DF39-0065-483D-A7C7-E5A683616350" Win64="yes">
+          <File Id="PayloadManifest" Source="$(var.StageDir)\payload-manifest.json" />
+          <RegistryValue Root="HKCU" Key="Software\AxiOwl\AxiAccess" Name="Manifest" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+        <Component Id="UserStartupComponent" Guid="7B4EEB5C-4D3D-4F09-8965-7443396B7108" Win64="yes">
+          <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="AxiAccess Sender" Type="string" Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]session.ps1&quot; -Operation Start" KeyPath="yes" />
+        </Component>
+      </Directory></Directory></Directory>
+    </Directory>
+    <Feature Id="Sender" Title="AxiAccess Sender" Level="1" Absent="disallow">
+      <ComponentRef Id="SenderComponent" /><ComponentRef Id="SessionComponent" /><ComponentRef Id="ManifestComponent" /><ComponentRef Id="UserStartupComponent" />
+    </Feature>
+    <!-- The helper only stops the exact installed sender in the original account. -->
+    <CustomAction Id="StopOwnedSender" Directory="TARGETDIR" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]session.ps1&quot; -Operation Stop" Execute="immediate" Return="check" Impersonate="yes" />
+    <CustomAction Id="SetupSender" FileKey="SenderExe" ExeCommand="setup --quiet --config &quot;[LocalAppDataFolder]AxiAccess\sender.json&quot;" Execute="deferred" Return="check" Impersonate="yes" />
+    <CustomAction Id="StartSender" Directory="TARGETDIR" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]session.ps1&quot; -Operation Start -ConfigPath &quot;[LocalAppDataFolder]AxiAccess\sender.json&quot;" Execute="deferred" Return="check" Impersonate="yes" />
+    <InstallExecuteSequence>
+      <Custom Action="StopOwnedSender" Before="InstallInitialize">Installed OR WIX_UPGRADE_DETECTED</Custom>
+      <Custom Action="SetupSender" After="InstallFiles">NOT REMOVE~=&quot;ALL&quot;</Custom>
+      <Custom Action="StartSender" After="SetupSender">NOT REMOVE~=&quot;ALL&quot;</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

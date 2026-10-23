@@ -1,0 +1,55 @@
+#!/bin/sh
+# Manage this package's exact user unit; never the AxiOwl daemon.
+set -eu
+state=/var/lib/axiaccess/install-active-users
+unit=axiaccess-sender.service
+as_user() {
+    uid=$1; shift
+    name=$(getent passwd "$uid" | cut -d: -f1)
+    [ -n "$name" ] || return 1
+    /usr/sbin/runuser -u "$name" -- /usr/bin/env PATH=/usr/bin:/bin \
+        XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" "$@"
+}
+owned_unit() {
+    path=$(as_user "$1" /usr/bin/systemctl --user show "$unit" --property=FragmentPath --value 2>/dev/null) || return 1
+    case "$path" in /usr/lib/systemd/user/axiaccess-sender.service|/lib/systemd/user/axiaccess-sender.service) return 0 ;; *) return 1 ;; esac
+}
+case "${1:-}" in
+    stop-upgrade|stop-remove)
+        if [ -L /var/lib/axiaccess ]; then echo 'Unrecognized AxiAccess installer state path.' >&2; exit 1; fi
+        /usr/bin/install -d -o root -g root -m 0755 /var/lib/axiaccess
+        temporary="$state.$$.tmp"
+        umask 077
+        : > "$temporary"
+        for runtime in /run/user/[0-9]*; do
+            [ -S "$runtime/bus" ] || continue
+            uid=${runtime##*/}
+            case "$uid" in *[!0-9]*|'') continue ;; esac
+            [ "$uid" != 0 ] || continue
+            owned_unit "$uid" || continue
+            active=$(as_user "$uid" /usr/bin/systemctl --user is-active "$unit" 2>/dev/null) || active=inactive
+            if [ "$active" = active ]; then
+                as_user "$uid" /usr/bin/systemctl --user stop "$unit"
+                if [ "$1" = stop-upgrade ]; then printf '%s\n' "$uid" >> "$temporary"; fi
+            fi
+            if [ "$1" = stop-remove ]; then
+                # Remove user integration as that user, never with root home
+                # filesystem authority or wildcard process termination.
+                as_user "$uid" /usr/bin/axiaccess-session disable
+            fi
+        done
+        mv -f "$temporary" "$state"
+        ;;
+    resume)
+        [ -f "$state" ] && [ ! -L "$state" ] || exit 0
+        while IFS= read -r uid; do
+            case "$uid" in *[!0-9]*|'') continue ;; esac
+            [ -S "/run/user/$uid/bus" ] || continue
+            owned_unit "$uid" || continue
+            as_user "$uid" /usr/bin/systemctl --user daemon-reload
+            as_user "$uid" /usr/bin/systemctl --user start "$unit"
+        done < "$state"
+        rm -- "$state"
+        ;;
+    *) echo 'Unknown AxiAccess installer lifecycle operation.' >&2; exit 2 ;;
+esac

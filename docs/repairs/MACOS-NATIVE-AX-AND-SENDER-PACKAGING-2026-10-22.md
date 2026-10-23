@@ -1,0 +1,58 @@
+# Native macOS AxiAccess and independent sender packaging
+
+Date: October 22, 2026, America/Los_Angeles. Implementation record; installed acceptance is recorded separately below as evidence becomes available.
+
+## Documents read before implementation
+
+The actual contents of the following distinct repository documents were read before editing the native adapter or packaging. The duplicate old integration plan in the two repositories counts as one document.
+
+1. [AxiAccess README](../../README.md): established the existing five-tier observer/CLI/MCP contract and showed the Python/PyObjC Mac dependency and accessibility activation claims. This motivated retaining the legacy response structure while replacing the production backend, rather than shipping an undisclosed Python dependency.
+2. [Approved cross-platform implementation plan](https://github.com/morganross/AxiOwl-Desktop/blob/main/docs/AXIACCESS-SENDER-IDE-MCP-IMPLEMENTATION-PLAN-2026-10-22.md): supplies the observation-only boundary, actual Mac trust, timeout, exact-window, protected-text, native-notification and standalone sender requirements. It supersedes the old plan's copied-engine/action proposals.
+3. [Historical integration plan](../../AXIOWL-ACCESS-LISTENER-INTEGRATION-PLAN.md): supplies historical listener and daemon isolation intentions; its unimplemented event/action and STA claims are not treated as proof. The implementation deliberately does not copy the engine into the IDE or add any accessibility action.
+4. [IDE remote desktop runtime](https://github.com/morganross/AxiOwl-Desktop/blob/main/tools/remote-desktop/README.md): establishes isolated app-owned child lifecycle, offline native payloads and distinction between an IDE-owned child and an independently installed service. AxiAccess stays a separate sender app and never terminates other independently started senders.
+5. [IDE IPC contract](https://github.com/morganross/AxiOwl-Desktop/blob/main/ide-ipc/README.md): supplies bounded responses, caller identity, epochs, explicit failure and resynchronization principles without authorizing changes to that frozen protocol. Stale AX windows fail instead of selecting a replacement by title.
+6. [Mac WebKit implementation results](https://github.com/morganross/AxiOwl-Desktop/blob/main/docs/MAC-WKWEBVIEW-IMPLEMENTATION-RESULTS-2026-10-22.md): establishes the existing arm64/macOS26 floor, inside-out signing/notarization/stapling, actual image receipts and explicit preservation/evidence limits. The sender uses the existing approved Developer ID/notary material, not new keys or account permissions.
+
+Primary Apple references were also inspected: AX messaging timeout, paged attribute arrays, AX trust, NSWorkspace running applications, AXObserver/run-loop concepts and Service Management. Their API availability does not substitute for a real signed installed read.
+
+## Evidenced causes
+
+The previous Rust Mac path invoked `python3`/`axiaccess_macos.py`. That backend returned an empty inventory on import failure, inventoried Quartz on-screen windows, used first-window/title fallback, set accessibility activation attributes during reads, and defaulted visibility to optimistic values. It copied complete AXChildren arrays and did not bound actual layout recursion. Text filtering did not protect AXSecureTextField before extracting AXValue.
+
+No standalone signed Mac sender application/PKG or user-controlled login helper existed in the reviewed baseline. Merely copying the Rust binary into an installer would still require Python and would not establish a stable permission identity or independent sender lifecycle.
+
+## Changes
+
+`src/platform/macos.rs` calls public CoreFoundation/ApplicationServices/AppKit APIs directly from Rust. It uses actual AX trust without triggering a permission prompt or changing observed-app attributes. It inventories running GUI applications and their paged AXWindows, including windows not present in an on-screen-only Quartz query. It retains exact AXUIElement references, namespaces them by application PID/launch lifetime, and rejects unknown/stale references; there is no first-window, PID, or title fallback.
+
+Bulk metadata excludes AXValue. Secure subroles are recognized before value/text extraction, named `[protected]`, and not traversed. Children are read in pages; per-call timeout, overall deadline, raw-node/depth/retained-node/text limits return explicit truncation/issues. Text ranges use native UTF-16 units and return Unicode-safe strings. Equal-length or equal-preview buffers are not deduplicated. Geometry is marked known only when AXPosition/AXSize were measured; generic occlusion remains unknown. JSON serialization provides the YAML-compatible presentation rather than interpolating app strings into YAML.
+
+The shared additive AA-07 model retains native AX role and nullable measured state: enabled/focused/selected/expanded/read-only/checked and numeric range values. `AXUIElementIsAttributeSettable` is a read-only capability query; no attribute setter or action is called. Unsupported state is null instead of an invented disabled/unchecked value. Exact retained AX object references provide stable node/buffer identities in a bounded 4,096-entry LRU; matching never relies on repeated app-defined identifiers or labels. Eviction produces an unmatched/stale buffer on later hydration, not a different document.
+
+Compact inspection requests at most 180 UTF-16 units through AXStringForRange. When the provider cannot offer a bounded range, document/edit text is deferred rather than copying full AXValue to discard it. Full text is read only for explicit text hydration/full capture and remains bounded. The initial hierarchy time and later retained text-capture time are distinct in the shared coordinator.
+
+The actual macOS SDK `AXUIElement.h` was read during native validation. It explicitly says an individual object's timeout does not apply even to equal objects. The backend therefore sets the observing process's own AX default to 250ms through AXUIElementCreateSystemWide; this is client configuration, not another app's accessibility state. Native work stops at 2.4 seconds, leaving a final bounded call and serialization headroom before the shared worker's hard 3-second deadline.
+
+An AXObserver worker owns a dedicated CFRunLoop, bounded subscription channel and bounded application/element subscriptions. Notifications only increment an invalidation revision and wake a condition variable: they do not read entire trees or capture app text. Inventory refreshes application subscriptions; inspection enrolls observed nonsecure elements. Unsupported notifications, dropped subscription requests and coverage limits remain visible. Event hints do not prove universal change coverage; bounded on-demand reconciliation remains required.
+
+`packaging/macos` defines stable `com.axiowl.axiaccess.sender` at `/Applications/AxiAccess Sender.app`, a minimal native setup/status control window, and an opt-in GUI-user Service Management login agent. Setup uses the AxiAccess-specific private configuration namespace. The UI starts/stops only its exact child; login startup is independently registered by the user. Observed applications are never clicked, typed into, focused, scrolled or launched.
+
+`scripts/release-macos.sh` is the single complete sender build/sign/notarize/package entrypoint. It compiles the native arm64 Rust observer plus small system AppKit/ServiceManagement controls, signs inside-out using existing approved identities, notarizes/staples the app and offline PKG, assesses signatures, and writes source/tree/lock/toolchain/recipe/hash/inventory receipts. The root release coordinator owns the final shared GitHub publication after all three platforms use the same source. No Python/Node/browser/IDE/daemon is shipped in the sender. Build-time Python/Swift tooling is not a runtime dependency.
+
+## Compatibility and boundaries
+
+Only macOS adapter and sender packaging files are owned by this change. Windows/Linux remain separate native adapters using the shared additive response model. Existing Python compatibility entrypoints remain outside the production payload. Native AX permissions belong to the installed sender's signed identity; launching over SSH does not grant another user's desktop access. Application accessibility coverage remains app-dependent. The existing IDE daemon, provider authentication, chat stores, signing keys, keychain access policy and cloud allocations are unchanged.
+
+The standalone sender's API-derived minimum is **arm64/macOS13**: the AX APIs predate it, and SMAppService login-agent registration requires macOS13. The sender does not inherit the unrelated IDE renderer's macOS26 policy. The release command, Swift targets, app Info.plist, installer architecture/OS requirements and provenance consistently specify macOS13; actual Mach-O minimums must be checked in the final artifacts. There is no Intel-Mac support claim. Login startup is explicit and user-context, never a root/system desktop observer. Network authentication/TLS/pairing are owned by the shared sender implementation and preserve this native permission boundary.
+
+## Verification status
+
+The real native Mac `cargo check --locked --target aarch64-apple-darwin` passed (20.01 seconds first dependency build; 1.48 seconds after AXObserver integration). Both Swift control programs typechecked for arm64/macOS26 and the canonical shell script parsed successfully. The full native release build passed in 1 minute 16 seconds. Its precommit binary was 7,043,056 bytes, SHA256 `8e8fd63e93b5488bfdbb1b9216016402a5d2f9b778dc671d64c7c9eff5c7042f`; exact precommit source archive digest is recorded in [native evidence](../evidence/macos-20261022/native-precommit.json). These are precommit compile receipts, not final published source/artifact provenance.
+
+Actual native worker calls returned `nativeRust:true`, `pythonRequired:false`, `readOnly:true`, and `permissionGranted:false` / `accessibilityPermissionRequired`. Window inventory returned an explicit `permissionDenied` error, rather than an empty successful desktop. No TCC database workaround, permission prompt, grant, observed app action or credential change was performed. The new installed sender identity will require its own real macOS Accessibility approval before a successful inventory/text acceptance can be claimed.
+
+After the shared nullable-state/lazy-text additions and API-derived minimum adjustment, the native arm64/macOS13 release build passed in 50.52 seconds. Actual Mach-O load commands report `minos 13.0`. The precommit binary is 7,091,632 bytes, SHA256 `2ae724b1ba91927d700f53d9587ca0cb0a5450b3717e7b0aef5b424ac3346cd0`. A real stdio MCP client completed initialize, listed all seven read-only tools, called `access_capabilities`, and received a correctly structured `isError:true` / `permission_denied` from `access_windows`. This is recorded in [MCP evidence](../evidence/macos-20261022/mcp-precommit.json); it is not a successful AX window read or an installed framework/model conversation. The precommit build accurately reports `sourceRevision:unrecorded`; the canonical release embeds its actual published source revision instead.
+
+No installed sender, PKG signature/notarization, reinstall, login startup, successful native text read or all-framework tool pass is claimed at this point. Final artifact source/hash receipts and actual observations must be added before reporting completion.
+
+The Mac had 6,766,690,304 free bytes at initial source admission. No unrelated build cache, chat or credential data was deleted to make space.

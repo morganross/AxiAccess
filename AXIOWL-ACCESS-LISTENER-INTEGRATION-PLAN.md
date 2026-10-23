@@ -1,3 +1,7 @@
+> **Superseded historical proposal — October 22, 2026.**
+> Retained for history, not current implementation instructions. Follow [the approved sender/IDE/MCP plan](https://github.com/morganross/AxiOwl-Desktop/blob/main/docs/AXIACCESS-SENDER-IDE-MCP-IMPLEMENTATION-PLAN-2026-10-22.md) and [the current AxiAccess sender protocol](docs/SENDER-PROTOCOL.md).
+> The old copied IDE engine crate, STA requirement, action/click/type tools, unauthenticated HTTP endpoints and assumed universal native-event claims below are superseded. The sender engine remains in AxiAccess; Windows UIA uses MTA; native event availability/coverage must be reported from actual capabilities. The IDE owns listener/MCP delivery; the daemon remains unchanged. Source wiring is not installed acceptance.
+
 # AxiOwl Access Listener Integration Plan
 **Document Version:** 1.0.0  
 **Date:** October 2026  

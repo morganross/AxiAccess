@@ -7,3 +7,6 @@ env/
 /target/
 offscreen_test_doc.txt
 .DS_Store
+/.cache/
+/dist/
+*.log

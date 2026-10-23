@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+    upgrade) /usr/lib/axiaccess/install-lifecycle stop-upgrade ;;
+    remove|deconfigure) /usr/lib/axiaccess/install-lifecycle stop-remove ;;
+esac

@@ -1,0 +1,43 @@
+{
+  "fixture": "own nonactivating public/password WinForms controls",
+  "inputActions": false,
+  "nativeInventory": true,
+  "nativeIdentityPresent": true,
+  "fixtureInspectionMs": 83.3,
+  "publicTextObserved": true,
+  "protectedTextAbsent": true,
+  "protectedNodePresent": true,
+  "nativeRolePresent": true,
+  "nullableStateMapPresent": true,
+  "protectedValueStateAbsent": true,
+  "lazyPreviewBounded": true,
+  "lazyBuffersMarkedDeferred": true,
+  "lazyHierarchyNotTruncated": true,
+  "actualRawNodes": 9,
+  "retainedNodes": 9,
+  "captureTruncated": false,
+  "staleReferenceRejected": true,
+  "foregroundUnchanged": true,
+  "nativeEvents": {
+    "revision": 3,
+    "status": {
+      "completeCoverage": false,
+      "coverage": "focus, structure, text, windows and selected properties where providers emit events",
+      "issues": [],
+      "ready": true,
+      "registrations": 6,
+      "running": true,
+      "supported": true
+    }
+  },
+  "capabilityReadOnly": true,
+  "pass": true,
+  "toolchain": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "binarySha256": "15a4d744cb67f5b88fd69048d73f48c86e8e074b874c0bdb95b2eeff9d7aed01",
+  "sourceState": "Shared uncommitted implementation checked and built locally; not an installer acceptance receipt",
+  "sourceFilesSha256": {
+    "src\\engine.rs": "e4ce5277bdc5bfee4af0cb088d14a1a35ac4c91b7b391666985e5b9f16febc4e",
+    "src\\platform\\mod.rs": "e5200300b66bb926b1614e9baac98174b91e0d125dd543600a4dd5769ca141a5",
+    "src\\platform\\windows.rs": "7a4e35bba3906d35c8b6d7a1a17f853e429243fd8f5d401edd283cb4b9ce6b5b"
+  }
+}

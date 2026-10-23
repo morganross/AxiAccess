@@ -1,0 +1,77 @@
+#!/bin/sh
+# AxiAccess-owned graphical-user startup management; never manages the IDE daemon.
+set -eu
+if [ "$(id -u)" = 0 ]; then
+    echo 'AxiAccess sender must run in the selected graphical user session, not root.' >&2
+    exit 1
+fi
+entry="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/axiaccess-sender.desktop"
+marker='# Owned by AxiAccess session integration v1'
+write_entry() {
+    mkdir -p "$(dirname "$entry")"
+    if [ -e "$entry" ] && ! grep -Fxq "$marker" "$entry"; then
+        echo "Existing startup entry is not owned by AxiAccess: $entry" >&2; exit 1
+    fi
+    temporary="$entry.$$.tmp"
+    umask 077
+    cat > "$temporary" <<'EOF'
+# Owned by AxiAccess session integration v1
+[Desktop Entry]
+Type=Application
+Name=AxiAccess sender
+Comment=Read-only app and window observation for explicitly paired clients
+Exec=/usr/bin/axiaccess-session start
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+    mv -f "$temporary" "$entry"
+}
+case "${1:-status}" in
+    start)
+        if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+            echo 'No graphical session is selected. Start from your desktop login session.' >&2; exit 1
+        fi
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+            for name in DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_SESSION_TYPE AT_SPI_BUS_ADDRESS AT_SPI_DISPLAY; do
+                if printenv "$name" >/dev/null 2>&1; then systemctl --user import-environment "$name"; fi
+            done
+            exec systemctl --user start axiaccess-sender.service
+        fi
+        # Desktop environments without systemd user management retain the same
+        # graphical environment. The sender owns its endpoint/instance lock.
+        /usr/bin/axiaccess setup --quiet
+        exec /usr/bin/axiaccess sender
+        ;;
+    enable)
+        write_entry
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+            systemctl --user daemon-reload
+            systemctl --user enable axiaccess-sender.service
+        fi
+        echo 'AxiAccess startup enabled for this user. Run axiaccess-session start to start now.'
+        ;;
+    disable)
+        if [ -f "$entry" ]; then
+            if ! grep -Fxq "$marker" "$entry"; then echo 'Unrecognized startup entry; preserving it.' >&2; exit 1; fi
+            rm -- "$entry"
+        fi
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+            systemctl --user disable --now axiaccess-sender.service
+        fi
+        ;;
+    stop)
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+            exec systemctl --user stop axiaccess-sender.service
+        fi
+        echo 'This desktop has no systemd user manager; stop its foreground sender directly.' >&2; exit 1
+        ;;
+    status)
+        /usr/bin/axiaccess --version
+        if [ -f "$entry" ]; then echo 'User startup entry: present'; else echo 'User startup entry: disabled'; fi
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+            exec systemctl --user --no-pager status axiaccess-sender.service
+        fi
+        echo 'No systemd user manager; use the selected graphical-session foreground sender.'
+        ;;
+    *) echo 'Usage: axiaccess-session start|stop|enable|disable|status' >&2; exit 2 ;;
+esac

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.axiowl.axiaccess.sender</string>
+  <key>CFBundleName</key><string>AxiAccess Sender</string>
+  <key>CFBundleDisplayName</key><string>AxiAccess Sender</string>
+  <key>CFBundleExecutable</key><string>AxiAccessSender</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>AXIACCESS_VERSION</string>
+  <key>CFBundleVersion</key><string>AXIACCESS_VERSION</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSHumanReadableCopyright</key><string>AxiOwl. Observation only; no click or type.</string>
+</dict></plist>

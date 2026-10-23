@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AxiAccess sender status
+Comment=Read-only desktop observation sender status and setup
+Exec=/usr/bin/axiaccess-session status
+Terminal=true
+Categories=Utility;Accessibility;
+NoDisplay=false
