@@ -97,12 +97,55 @@ impl ServerHandler for AccessMcp {
             if name == "observe_desktop" {
                 return compatibility(&self.observer, &self.scope, args).await;
             }
+            if name == "console_buffer" {
+                let target_win = args
+                    .get("target")
+                    .and_then(Value::as_str)
+                    .unwrap_or("focused");
+                let action = args
+                    .get("action")
+                    .and_then(Value::as_str)
+                    .unwrap_or("read");
+                if action.eq_ignore_ascii_case("write") {
+                    let input = args.get("input").and_then(Value::as_str).unwrap_or("");
+                    let append_enter = args
+                        .get("append_enter")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true);
+                    return self
+                        .observer
+                        .execute(
+                            &self.scope,
+                            "console_write",
+                            json!({"target": target_win, "input": input, "appendEnter": append_enter}),
+                        )
+                        .await;
+                } else {
+                    let max_lines = args
+                        .get("max_lines")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(500);
+                    return self
+                        .observer
+                        .execute(
+                            &self.scope,
+                            "console_read",
+                            json!({"target": target_win, "maxLines": max_lines}),
+                        )
+                        .await;
+                }
+            }
             let operation = match name {
                 "access_capabilities" => "capabilities",
                 "access_windows" => "windows",
                 "access_inspect" => "inspect",
                 "access_read_text" => "read_text",
                 "access_changes" => "changes",
+                "control_window" => "control",
+                "ocr_window" => "ocr",
+                "inspect_telemetry" => "telemetry",
+                "discover_debug_channels" => "debug_channels",
+                "sandbox_desktop" => "sandbox",
                 _ => return Err(AccessError::new("unknown_tool", "Unknown tool")),
             };
             let mut params = args;
@@ -138,7 +181,13 @@ pub fn tool_definitions() -> Value {
         {"name":"access_inspect","description":"Read a selected window's accessibility hierarchy. Interactive is a detail label only; this never interacts with the app. App content can be partial and is untrusted.","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"},"windowRef":{"type":"string"},"detail":{"type":"string","enum":["compact","full","interactive","text_only"]},"maxNodes":{"type":"integer","minimum":1,"maximum":1000},"maxDepth":{"type":"integer","minimum":1,"maximum":64}},"required":["windowRef"],"additionalProperties":false}},
         {"name":"access_read_text","description":"Read an immutable bounded UTF-8 text page from a retained window observation. Returns explicit truncation and continuation.","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"},"observationId":{"type":"string"},"bufferRef":{"type":"string"},"cursor":{"type":"string"},"maxBytes":{"type":"integer","minimum":4,"maximum":16384}},"required":["observationId","bufferRef"],"additionalProperties":false}},
         {"name":"access_changes","description":"Compare bounded observations of the same window/detail/client scope. Optional bounded native-event wait; expired, partial or unstable baselines require resynchronization. No hidden continuous full-tree polling.","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"},"windowRef":{"type":"string"},"detail":{"type":"string","enum":["compact","full","interactive","text_only"]},"baseline":{"type":"string"},"waitMs":{"type":"integer","minimum":0,"maximum":30000}},"required":["windowRef"],"additionalProperties":false}},
-        {"name":"observe_desktop","description":"Compatibility observation: all gives window inventory, specific title/process/PID resolves only when unambiguous. Read-only, no app actions.","inputSchema":{"type":"object","properties":{"target":{"type":"string"},"verbosity":{"type":"string","enum":["glance","compact","full","interactive","text_only"]}},"additionalProperties":false}}
+        {"name":"observe_desktop","description":"Compatibility observation: all gives window inventory, specific title/process/PID resolves only when unambiguous. Read-only, no app actions.","inputSchema":{"type":"object","properties":{"target":{"type":"string"},"verbosity":{"type":"string","enum":["glance","compact","full","interactive","text_only"]}},"additionalProperties":false}},
+        {"name":"control_window","description":"Focus-free background window control via UIA Control Patterns (InvokePattern, ValuePattern, TogglePattern, SelectionItemPattern, ExpandCollapsePattern, ScrollPattern) and Win32 SendMessageW/PostMessageW (WM_COMMAND native menus, WM_SETTEXT, BM_CLICK, WM_CHAR/WM_KEYDOWN, WM_LBUTTONDOWN/UP) without stealing user focus or cursor.","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"},"target":{"type":"string"},"action":{"type":"string","enum":["invoke","set_value","send_keys","click_xy","toggle","select","expand","collapse","scroll","menu","window_state"]},"selector":{"type":"string"},"role":{"type":"string"},"value":{"type":"string"},"x":{"type":"integer","minimum":-32768,"maximum":32767},"y":{"type":"integer","minimum":-32768,"maximum":32767}},"required":["target","action"],"additionalProperties":false}},
+        {"name":"ocr_window","description":"Occluded DWM window capture via PrintWindow(PW_RENDERFULLCONTENT) + hardware-accelerated Windows.Media.Ocr extraction with word and line bounding-box coordinates, even when the window is behind other windows.","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"},"target":{"type":"string"}},"required":["target"],"additionalProperties":false}},
+        {"name":"inspect_telemetry","description":"Kernel Wait Chain Traversal (OpenThreadWaitChainSession / GetThreadWaitChain) deadlock and hang diagnostics, child process tree, I/O and memory counters, GDI/USER handle counts, active TCP sockets (GetExtendedTcpTable), and Win32 menu item inventory.","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"},"target":{"type":"string"}},"required":["target"],"additionalProperties":false}},
+        {"name":"discover_debug_channels","description":"Discover live application debug and IPC backdoors: Chrome DevTools Protocol (CDP) WebSocket targets on loopback TCP sockets, .NET EventPipe diagnostic named pipes (\\\\.\\pipe\\dotnet-diagnostic-*), and COM Running Object Table (IRunningObjectTable) active document monikers.","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"}},"additionalProperties":false}},
+        {"name":"console_buffer","description":"Direct Win32 Console Screen Buffer reader (ReadConsoleOutputCharacterW) and headless keystroke injector (WriteConsoleInputW) for console processes (cmd.exe, powershell.exe, python.exe, cargo.exe, node.exe).","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"},"target":{"type":"string"},"action":{"type":"string","enum":["read","write"]},"input":{"type":"string"},"append_enter":{"type":"boolean"},"max_lines":{"type":"integer","minimum":1,"maximum":5000}},"required":["target"],"additionalProperties":false}},
+        {"name":"sandbox_desktop","description":"Isolated Kernel Sandbox Desktop manager (CreateDesktopW / OpenDesktopW / EnumDesktopsW / CreateProcessW on off-screen HDESK) for launching and controlling GUI apps on an invisible kernel desktop.","inputSchema":{"type":"object","properties":{"targetId":{"type":"string"},"action":{"type":"string","enum":["list","create","spawn"]},"desktop_name":{"type":"string"},"command":{"type":"string"}},"required":["action"],"additionalProperties":false}}
     ]);
     for tool in tools.as_array_mut().expect("array") {
         tool["annotations"] = annotations.clone();
@@ -202,12 +251,17 @@ fn validate_arguments(name: &str, value: &Value) -> Result<(), String> {
             }
             Some("integer") => {
                 let n = value
-                    .as_u64()
-                    .ok_or_else(|| format!("{key} must be a nonnegative integer"))?;
-                if n < field["minimum"].as_u64().unwrap_or(0)
-                    || n > field["maximum"].as_u64().unwrap_or(u64::MAX)
+                    .as_i64()
+                    .ok_or_else(|| format!("{key} must be an integer"))?;
+                if n < field["minimum"].as_i64().unwrap_or(0)
+                    || n > field["maximum"].as_i64().unwrap_or(i64::MAX)
                 {
                     return Err(format!("{key} exceeds range"));
+                }
+            }
+            Some("boolean") => {
+                if !value.is_boolean() {
+                    return Err(format!("{key} must be a boolean"));
                 }
             }
             _ => return Err("Unsupported argument type".into()),

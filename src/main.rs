@@ -104,6 +104,88 @@ enum Commands {
     },
     #[command(hide = true, name = "__worker")]
     Worker,
+    /// Focus-free background window & control manipulation (UIA Patterns + Win32 SendMessage/PostMessage)
+    Control {
+        /// Target window (hwnd, pid, process, title, or "focused")
+        target: String,
+        /// Action: invoke | set_value | send_keys | click_xy | toggle | select | expand | collapse | scroll | menu | window_state
+        action: String,
+        /// Element selector (@e5, element name substring, or menu item name)
+        #[arg(short, long)]
+        selector: Option<String>,
+        /// Role filter (button, edit, menuitem, checkbox, etc.)
+        #[arg(short, long)]
+        role: Option<String>,
+        /// Value / text / keys payload for set_value, send_keys, menu, or window_state
+        #[arg(short = 'V', long)]
+        value: Option<String>,
+        /// Client X coordinate (for click_xy) or horizontal scroll delta
+        #[arg(short, long)]
+        x: Option<i32>,
+        /// Client Y coordinate (for click_xy) or vertical scroll delta
+        #[arg(short, long)]
+        y: Option<i32>,
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Occluded DWM window capture (PrintWindow PW_RENDERFULLCONTENT) + hardware Windows.Media.Ocr
+    Ocr {
+        /// Target window (hwnd, pid, process, title, or "focused")
+        #[arg(default_value = "focused")]
+        target: String,
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Kernel Wait Chain Traversal (WCT), deadlock/hang diagnostics, child tree, I/O & TCP sockets
+    Telemetry {
+        /// Target window (hwnd, pid, process, title, or "focused")
+        #[arg(default_value = "focused")]
+        target: String,
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Discover live app debug & IPC channels (CDP WebSocket ports, .NET diagnostic pipes, COM ROT)
+    DebugChannels {
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Direct Win32 Console Screen Buffer reader & headless keystroke injector (ReadConsoleOutputCharacterW / WriteConsoleInputW)
+    Console {
+        /// Target console window or PID (cmd, powershell, python, node, cargo, or "focused")
+        #[arg(default_value = "focused")]
+        target: String,
+        /// Optional input string to inject into the console input buffer (WriteConsoleInputW)
+        #[arg(short, long)]
+        write: Option<String>,
+        /// Append Enter keystroke when writing
+        #[arg(long, default_value_t = true)]
+        enter: bool,
+        /// Maximum console lines to read
+        #[arg(short, long, default_value_t = 500)]
+        max_lines: usize,
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Isolated Kernel Sandbox Desktop manager (CreateDesktopW / OpenDesktopW / EnumDesktopsW / CreateProcessW)
+    Sandbox {
+        /// Action: list | create | spawn
+        #[arg(default_value = "list")]
+        action: String,
+        /// Sandbox desktop name (defaults to "AxiAccessSandbox")
+        #[arg(short, long)]
+        name: Option<String>,
+        /// Command line to spawn on the sandbox desktop (when action = "spawn")
+        #[arg(short, long)]
+        command: Option<String>,
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 async fn query(
     target: String,
@@ -305,6 +387,188 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             let format = if format == "diff" { "json" } else { &format };
             println!("{}", reader::render(&value, format)?);
+            Ok(())
+        }
+        Some(Commands::Control {
+            target,
+            action,
+            selector,
+            role,
+            value,
+            x,
+            y,
+            json: as_json,
+        }) => {
+            let req = axiaccess::lowlevel::ControlActionRequest {
+                target,
+                action,
+                selector,
+                role,
+                value,
+                x,
+                y,
+            };
+            let res = axiaccess::lowlevel::control_window(req)?;
+            if as_json || cli.json {
+                println!("{}", serde_json::to_string_pretty(&res)?);
+            } else {
+                println!(
+                    "[OK={} | {:.1}ms] {} on \"{}\" ({}, hwnd:{}) via {}\n  Details: {}",
+                    res.success,
+                    res.execution_time_ms,
+                    res.action,
+                    res.target_title,
+                    res.target_process,
+                    res.target_hwnd,
+                    res.method_used,
+                    res.details
+                );
+            }
+            Ok(())
+        }
+        Some(Commands::Ocr {
+            target,
+            json: as_json,
+        }) => {
+            let res = axiaccess::lowlevel::ocr_window(&target)?;
+            if as_json || cli.json {
+                println!("{}", serde_json::to_string_pretty(&res)?);
+            } else {
+                println!(
+                    "# Occluded DWM + Hardware OCR — \"{}\" ({}, pid:{}, hwnd:{})\n# Capture: {} | {}x{} px | {} lines, {} words, {} chars | {:.1}ms\n\n{}",
+                    res.title,
+                    res.process,
+                    res.pid,
+                    res.hwnd,
+                    res.capture_method,
+                    res.window_width,
+                    res.window_height,
+                    res.line_count,
+                    res.word_count,
+                    res.char_count,
+                    res.scan_time_ms,
+                    res.full_text
+                );
+            }
+            Ok(())
+        }
+        Some(Commands::Telemetry {
+            target,
+            json: as_json,
+        }) => {
+            let res = axiaccess::lowlevel::inspect_telemetry(&target)?;
+            if as_json || cli.json {
+                println!("{}", serde_json::to_string_pretty(&res)?);
+            } else {
+                println!(
+                    "# Process Telemetry & Wait Chain — \"{}\" ({}, pid:{}, hwnd:{}, ui_tid:{})\n- Status: {} (hung={}, deadlocked={})\n- Memory: {:.1} MB working set, {:.1} MB private | Handles: {} (GDI: {}, USER: {})\n- I/O: {} read ops ({} B), {} write ops ({} B)\n- Children: {} | Active TCP Sockets: {} | Menu Items: {} | Scanned in {:.1}ms",
+                    res.title,
+                    res.process,
+                    res.pid,
+                    res.hwnd,
+                    res.ui_thread_id,
+                    res.wait_chain_status,
+                    res.is_hung_window,
+                    res.is_deadlocked,
+                    res.working_set_mb,
+                    res.private_bytes_mb,
+                    res.handle_count,
+                    res.gdi_objects,
+                    res.user_objects,
+                    res.io_read_ops,
+                    res.io_read_bytes,
+                    res.io_write_ops,
+                    res.io_write_bytes,
+                    res.child_processes.len(),
+                    res.tcp_connections.len(),
+                    res.menu_items.len(),
+                    res.scan_time_ms
+                );
+            }
+            Ok(())
+        }
+        Some(Commands::DebugChannels { json: as_json }) => {
+            let res = axiaccess::lowlevel::discover_debug_channels();
+            if as_json || cli.json {
+                println!("{}", serde_json::to_string_pretty(&res)?);
+            } else {
+                println!(
+                    "# Live Debug & IPC Channels (scanned in {:.1}ms)\n- CDP Targets: {}\n- .NET Diagnostic Pipes: {}\n- COM Running Objects: {}",
+                    res.scan_time_ms,
+                    res.cdp_targets.len(),
+                    res.dotnet_diagnostic_pipes.len(),
+                    res.com_running_objects.len()
+                );
+                for c in &res.cdp_targets {
+                    println!(
+                        "  * [CDP :{}] {} (pid:{}) \"{}\" -> {}",
+                        c.port, c.process, c.pid, c.title, c.websocket_debugger_url
+                    );
+                }
+                for p in &res.dotnet_diagnostic_pipes {
+                    println!("  * [.NET Pipe] {} (pid:{}) -> {}", p.process, p.pid, p.pipe_path);
+                }
+                for r in &res.com_running_objects {
+                    println!("  * [COM ROT: {}] {}", r.category, r.display_name);
+                }
+            }
+            Ok(())
+        }
+        Some(Commands::Console {
+            target,
+            write,
+            enter,
+            max_lines: _,
+            json: as_json,
+        }) => {
+            if let Some(input_text) = write {
+                let res = axiaccess::lowlevel::write_console_input(&target, &input_text, enter)?;
+                if as_json || cli.json {
+                    println!("{}", serde_json::to_string_pretty(&res)?);
+                } else {
+                    println!("{}", res);
+                }
+            } else {
+                let res = axiaccess::lowlevel::read_console_buffer(&target)?;
+                if as_json || cli.json {
+                    println!("{}", serde_json::to_string_pretty(&res)?);
+                } else {
+                    println!(
+                        "# Console Buffer — {} (pid:{}) | Grid: {}x{} | Cursor: ({},{}) | {:.1}ms\n",
+                        res.process,
+                        res.pid,
+                        res.buffer_width,
+                        res.buffer_height,
+                        res.cursor_x,
+                        res.cursor_y,
+                        res.scan_time_ms
+                    );
+                    println!("{}", res.text);
+                }
+            }
+            Ok(())
+        }
+        Some(Commands::Sandbox {
+            action,
+            name,
+            command,
+            json: as_json,
+        }) => {
+            let desk = name.as_deref().unwrap_or("AxiAccessSandbox");
+            let res =
+                axiaccess::lowlevel::manage_sandbox_desktop(&action, desk, command.as_deref())?;
+            if as_json || cli.json {
+                println!("{}", serde_json::to_string_pretty(&res)?);
+            } else {
+                println!(
+                    "[Sandbox '{}' | {}] {}\n  Available Desktops: {:?}\n  Sandbox Windows: {:?}",
+                    res.desktop_name,
+                    res.action,
+                    res.status,
+                    res.available_desktops,
+                    res.sandbox_windows
+                );
+            }
             Ok(())
         }
         None => {let path=transport::config::default_path();let address=cli.port.map(|port|SocketAddr::from(([127,0,0,1],port))).unwrap_or(transport::config::read(&path)?.listen);transport::sender::serve(&path,address).await},

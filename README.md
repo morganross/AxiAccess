@@ -193,11 +193,66 @@ interrupting an active turn or rewriting independent provider-app settings.
 | `access_inspect` | Selected window/subtree and text-buffer descriptors |
 | `access_read_text` | Observation/buffer-bound immutable text page and continuation |
 | `access_changes` | Scoped added/removed/modified records or resynchronization |
+| `control_window` | Focus-free background control via UIA Control Patterns (`Invoke`, `Value`, `Toggle`, `SelectionItem`, `ExpandCollapse`, `Scroll`) and Win32 `SendMessageW`/`PostMessageW` (`WM_COMMAND`, `WM_SETTEXT`, `BM_CLICK`, `WM_CHAR`/`WM_KEYDOWN`, `WM_LBUTTONDOWN`/`UP`) |
+| `ocr_window` | Occluded DWM `PrintWindow(PW_RENDERFULLCONTENT)` capture + hardware `Windows.Media.Ocr` extraction with word/line bounding boxes |
+| `inspect_telemetry` | Kernel Wait Chain Traversal (`OpenThreadWaitChainSession` / `GetThreadWaitChain`), deadlock & hang diagnostics, child process tree, I/O & memory counters, GDI/USER handles, TCP sockets (`GetExtendedTcpTable`), and Win32 menu items |
+| `discover_debug_channels` | Discover live app debug & IPC channels: Chrome DevTools Protocol (CDP) WebSocket targets, `.NET` diagnostic named pipes (`\\.\pipe\dotnet-diagnostic-*`), and COM Running Object Table (`IRunningObjectTable`) monikers |
+| `console_buffer` | Direct Win32 Console Screen Buffer reader (`ReadConsoleOutputCharacterW`) and headless keystroke injector (`WriteConsoleInputW`) |
+| `sandbox_desktop` | Isolated Kernel Sandbox Desktop manager (`CreateDesktopW` / `OpenDesktopW` / `EnumDesktopsW` / `CreateProcessW` on off-screen `HDESK`) |
 
 `interactive` means readable-controls detail, never an action. IDE agent tools
 name configured target IDs, not arbitrary URLs/credentials/commands. Run authority
 is separate from pairing; delegation cannot expand allowed machines. Deleting one
 IDE's saved pairing is not remote revocation: revoke on the sender explicitly.
+
+## Low-level observation & programmatic control subsystems (`src/lowlevel.rs`)
+
+In addition to semantic accessibility tree observation, AxiAccess includes six native low-level observation and programmatic control subsystems:
+
+1. **Focus-Free Background Control (`axiaccess control`, MCP `control_window`)**
+   - Manipulates background, occluded, or unfocused windows without moving the physical cursor or stealing foreground focus (`SetForegroundWindow` is never required).
+   - **UIA Control Patterns:** `InvokePattern::Invoke()`, `ValuePattern::SetValue()`, `TogglePattern::Toggle()`, `SelectionItemPattern::Select()`, `ExpandCollapsePattern::Expand()`/`Collapse()`, and `ScrollPattern::Scroll()`.
+   - **Win32 Message Injection (`SendMessageW` / `PostMessageW`):** Native menu bar traversal and `WM_COMMAND` invocation (`GetMenu` / `GetSubMenu` / `GetMenuStringW` / `GetMenuItemID`), `WM_SETTEXT`, `BM_CLICK`, background keystrokes (`WM_KEYDOWN` / `WM_CHAR` / `WM_KEYUP`), client-relative coordinate clicks (`WM_LBUTTONDOWN` / `WM_LBUTTONUP`), and window state transitions (`ShowWindow`).
+2. **Occluded DWM Capture + Hardware OCR (`axiaccess ocr`, MCP `ocr_window`)**
+   - Captures the full DWM composition surface of any window—even when completely occluded behind other windows—using `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` (`0x00000002`) into a 32-bpp BGRA DIB section (`CreateDIBSection`), with `BitBlt` fallback.
+   - Feeds the in-memory `SoftwareBitmap` directly into the native WinRT `Windows.Media.Ocr` engine (`OcrEngine::TryCreateFromUserProfileLanguages`) to return full text plus line and word `[left, top, width, height]` bounding boxes in ~250–300 ms.
+3. **Kernel Wait Chain Traversal (WCT) & Process Telemetry (`axiaccess telemetry`, MCP `inspect_telemetry`)**
+   - Queries the Windows kernel Wait Chain Traversal API (`OpenThreadWaitChainSession` + `GetThreadWaitChain` from `advapi32.dll`) on the target window's UI thread alongside `IsHungAppWindow` to diagnose deadlocks and identify blocking threads/processes/mutexes.
+   - Enumerates the child process tree (`CreateToolhelp32Snapshot`), process memory (`K32GetProcessMemoryInfo`), I/O byte counters (`GetProcessIoCounters`), GDI/USER handle counts (`GetGuiResources`), active TCP sockets (`GetExtendedTcpTable` via `iphlpapi.dll`), and Win32 menu items.
+4. **Runtime & Framework Debug Channel Discovery (`axiaccess debug-channels`, MCP `discover_debug_channels`)**
+   - Scans active loopback TCP listeners and probes `/json/list` to discover live Chrome DevTools Protocol (CDP) / Electron / WebView2 / Node.js WebSocket debugger URLs (`webSocketDebuggerUrl`).
+   - Enumerates `\\.\pipe\dotnet-diagnostic-*` named pipes via `FindFirstFileW` / `FindNextFileW` and active COM Running Object Table (`GetRunningObjectTable` / `IRunningObjectTable`) monikers.
+5. **Direct Console & Terminal Buffer Interception (`axiaccess console`, MCP `console_buffer`)**
+   - Attaches directly to a target console process (`AttachConsole`) to read the 2D character grid (`GetConsoleScreenBufferInfo` + `ReadConsoleOutputCharacterW` on `CONOUT$`) or inject headless keystroke records (`WriteConsoleInputW` with `KEY_EVENT_RECORD` on `CONIN$`), then re-attaches to the parent console (`AttachConsole(ATTACH_PARENT_PROCESS)`).
+6. **Isolated Kernel Sandbox Desktops (`axiaccess sandbox`, MCP `sandbox_desktop`)**
+   - Creates, enumerates, and spawns processes on an isolated off-screen Windows kernel desktop (`CreateDesktopW`, `OpenDesktopW`, `EnumDesktopsW`, and `CreateProcessW` with `STARTUPINFOW.lpDesktop = "winsta0\\AxiAccessSandbox"`) without calling `SwitchDesktop`.
+
+```sh
+# 1. Focus-free background control (UIA Patterns + Win32 SendMessage/PostMessage)
+axiaccess control "Notepad" send_keys --value "Hello from background{ENTER}"
+axiaccess control "Notepad" invoke --selector "Save" --role button
+axiaccess control "Notepad" menu --value "Save"
+
+# 2. Occluded DWM window capture + hardware Windows.Media.Ocr
+axiaccess ocr focused
+axiaccess ocr "Visual Studio Code" --json
+
+# 3. Kernel Wait Chain Traversal (WCT), process tree, I/O, memory & TCP sockets
+axiaccess telemetry focused
+axiaccess telemetry 4476 --json
+
+# 4. Discover live CDP WebSocket ports, .NET diagnostic pipes & COM ROT monikers
+axiaccess debug-channels
+
+# 5. Direct Win32 Console Screen Buffer read & headless keystroke injection
+axiaccess console powershell --max-lines 200
+axiaccess console powershell --write "cargo check" --enter
+
+# 6. Isolated off-screen kernel sandbox desktop (winsta0\AxiAccessSandbox)
+axiaccess sandbox create --name AxiAccessSandbox
+axiaccess sandbox spawn --name AxiAccessSandbox --command "notepad.exe"
+axiaccess sandbox list
+```
 
 ## Resource and failure contract
 

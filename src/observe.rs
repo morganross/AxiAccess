@@ -199,6 +199,66 @@ pub fn worker_loop() -> Result<(), Box<dyn std::error::Error>> {
                     )
                 }
                 "capabilities" => Ok(engine::capabilities()),
+                "control" => {
+                    let req: crate::lowlevel::ControlActionRequest =
+                        serde_json::from_value(value["params"].clone())
+                            .map_err(|e| format!("Invalid control params: {}", e))?;
+                    serde_json::to_value(crate::lowlevel::control_window(req)?)
+                        .map_err(|e| e.to_string())
+                }
+                "ocr" => {
+                    let target = value["params"]["target"]
+                        .as_str()
+                        .unwrap_or("focused");
+                    serde_json::to_value(crate::lowlevel::ocr_window(target)?)
+                        .map_err(|e| e.to_string())
+                }
+                "telemetry" => {
+                    let target = value["params"]["target"]
+                        .as_str()
+                        .unwrap_or("focused");
+                    serde_json::to_value(crate::lowlevel::inspect_telemetry(target)?)
+                        .map_err(|e| e.to_string())
+                }
+                "debug_channels" => {
+                    serde_json::to_value(crate::lowlevel::discover_debug_channels())
+                        .map_err(|e| e.to_string())
+                }
+                "console_read" => {
+                    let target = value["params"]["target"]
+                        .as_str()
+                        .unwrap_or("focused");
+                    serde_json::to_value(crate::lowlevel::read_console_buffer(target)?)
+                        .map_err(|e| e.to_string())
+                }
+                "console_write" => {
+                    let target = value["params"]["target"]
+                        .as_str()
+                        .unwrap_or("focused");
+                    let input = value["params"]["input"].as_str().unwrap_or("");
+                    let append_enter = value["params"]["appendEnter"].as_bool().unwrap_or(true);
+                    Ok(crate::lowlevel::write_console_input(
+                        target,
+                        input,
+                        append_enter,
+                    )?)
+                }
+                "sandbox" => {
+                    let action = value["params"]["action"]
+                        .as_str()
+                        .unwrap_or("list");
+                    let desktop_name = value["params"]["desktop_name"]
+                        .as_str()
+                        .or_else(|| value["params"]["desktopName"].as_str())
+                        .unwrap_or("AxiAccessSandbox");
+                    let command = value["params"]["command"].as_str();
+                    serde_json::to_value(crate::lowlevel::manage_sandbox_desktop(
+                        action,
+                        desktop_name,
+                        command,
+                    )?)
+                    .map_err(|e| e.to_string())
+                }
                 _ => Err("Unknown native observation operation".into()),
             }
         })();
@@ -320,9 +380,11 @@ impl Observer {
             "windows" => self.windows(params).await,
             "inspect" => self.inspect(owner, params, false).await,
             "read_text" => self.read_text(owner, params).await,
+            "control" | "ocr" | "telemetry" | "debug_channels" | "console_read"
+            | "console_write" | "sandbox" => self.native(operation, params).await,
             _ => Err(AccessError::new(
                 "unknown_operation",
-                "Only capabilities, windows, inspect, read_text and changes are supported",
+                "Only capabilities, windows, inspect, read_text, changes, control, ocr, telemetry, debug_channels, console_read, console_write and sandbox are supported",
             )),
         }?;
         if serde_json::to_vec(&value)
