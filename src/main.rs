@@ -7,7 +7,7 @@ use std::{net::SocketAddr, path::PathBuf};
 #[command(
     name = "axiaccess",
     version,
-    about = "Read-only native desktop accessibility sender and MCP tools"
+    about = "Native desktop accessibility observer, TLS/SSH sender/reader, MCP server, and low-level programmatic control toolkit"
 )]
 struct Cli {
     #[command(subcommand)]
