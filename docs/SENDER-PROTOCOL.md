@@ -92,9 +92,9 @@ supplied shell commands. Host authentication remains SSH's responsibility.
 | --- | --- | --- |
 | `capabilities` | `{}` | ready identity plus native permission/capability state and applied limits |
 | `windows` | `{maxWindows?:1..250}` | sender/epoch/observation/time, windows `[{windowRef,native}]`, completeness/issues |
-| `inspect` | `{windowRef,detail?,maxNodes?:1..1000,maxDepth?:1..64}` | retained observation/tree and text-buffer descriptors |
-| `read_text` | `{observationId,bufferRef,cursor?,maxBytes?:4..16384}` | immutable text page, UTF-8 byte range, `nextCursor`, `capturedBytes`/truncation |
-| `changes` | `{windowRef,detail?,baseline?,waitMs?:0..30000}` | new baseline/observation, `added`/`removed`/`modified`, `textChanged` or `resyncRequired` |
+| `inspect` | `{windowRef,detail?,maxNodes?:1..1000,maxDepth?:1..64,selector?,role?}` | retained observation/tree (compact JSON, optionally pruned by `selector`/`role`) and text-buffer descriptors |
+| `read_text` | `{observationId,bufferRef,cursor?,maxBytes?:4..16384,tail?,search?}` | immutable text page (`cursor` or `tail:true`) or line search matches (`search`), UTF-8 byte range, `nextCursor`, `capturedBytes`/truncation |
+| `changes` | `{windowRef,detail?,baseline?,waitMs?:0..30000,includeTree?}` | new baseline/observation (`treeOmittedInDelta:true` when `resyncRequired==false` unless `includeTree:true`), `added`/`removed`/`modified` (`changedFields`), `textChanged`, `textDeltas` or `resyncRequired` |
 
 ### 2. Low-Level Observation & Programmatic Control Operations (Windows Native)
 

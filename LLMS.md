@@ -39,12 +39,15 @@ Use this workflow for IDEs (VS Code, Cursor, Visual Studio, JetBrains), browsers
      - `"text_only"` — Skips the tree and hydrates all `TextBufferInfo` objects immediately.
      - `"full"` — Full semantic tree + hydrated text buffers.
    - **MCP:** `access_inspect` with `{"windowRef": "w-...", "detail": "compact"}`
-3. **Paginate large text buffers** (editor documents, logs, chat histories, including off-screen/unrendered lines exposed by `TextPattern`):
-   - **MCP:** `access_read_text` with `{"observationId": "<from inspect>", "bufferRef": "<from textBuffers>", "maxBytes": 16384}`
-   - If `nextCursor` is present in the response, pass `"cursor": "<nextCursor>"` to read the next immutable 16 KiB UTF-8 page.
-4. **Track incremental UI changes** without re-reading the entire window:
+   - **Subtree & Role Filtering (Token Optimization):** Pass optional `"selector": "<id, name, or preview substring>"` and/or `"role": "<button|edit|document|...>"` to `access_inspect` to prune the returned `tree` to matching branches while keeping the full tree in the retained capture for subsequent `changes`/`read_text` calls. Default `false`/`0`/`""`/`[]` fields on `TreeNode` are automatically omitted from JSON to cut token overhead by ~50%.
+3. **Paginate, tail, or search large text buffers** (editor documents, logs, chat histories, including off-screen/unrendered lines exposed by `TextPattern`):
+   - **Forward pagination:** `access_read_text` with `{"observationId": "<from inspect>", "bufferRef": "<from textBuffers>", "maxBytes": 16384}`. If `nextCursor` is present in the response, pass `"cursor": "<nextCursor>"` to read the next immutable 16 KiB UTF-8 page.
+   - **Tail reading (latest logs/chat messages):** Pass `"tail": true` to read the last `maxBytes` from the end of the buffer (snapped cleanly to a UTF-8 and line boundary) in a single call.
+   - **Server-side line grep:** Pass `"search": "<query>"` (case-insensitive) to return only matching lines with `±2` lines of context and structured `matches` (`lineNumber`, `byteOffset`, `line`) without paging through the entire buffer.
+4. **Track incremental UI and text changes** without re-reading the entire window:
    - **MCP:** `access_changes` with `{"windowRef": "w-...", "detail": "compact", "baseline": "<previous observationId>", "waitMs": 2000}`
-   - Returns `added`, `removed`, `modified` nodes and `textChanged: true|false` (or `resyncRequired: true` if the window epoch changed).
+   - Returns `added`, `removed`, `modified` nodes (each with `changedFields` listing the exact properties that changed), `textChanged: true|false`, and inline `textDeltas` (`changeType: "appended" | "modified" | "added_buffer"`, up to 4 KiB per buffer) when text changes.
+   - When `resyncRequired == false`, the full `observation.tree` is omitted by default (`treeOmittedInDelta: true`) to save ~90% of delta tokens; pass `"includeTree": true` if you need both the delta and the full tree in one response.
 
 ---
 
@@ -157,9 +160,9 @@ When you need to launch and automate GUI applications completely invisibly (zero
 | `access_targets` | *(none)* | *(none)* | Lists configured observation targets (`local` in standalone MCP; approved local/remote/VM targets in AxiOwl IDE). |
 | `access_capabilities` | *(none)* | `targetId` | Returns platform adapter capabilities, permission state, native event status, and protocol resource bounds. |
 | `access_windows` | *(none)* | `targetId`, `maxWindows` (`1..250`) | Returns bounded window inventory with deterministic `windowRef` (`w-<sha256>`) and native metadata (`hwnd`, `pid`, `process`, `title`, `bounds`, `focused`, `minimized`, `offscreen`). |
-| `access_inspect` | `windowRef` | `targetId`, `detail` (`"compact"` \| `"full"` \| `"interactive"` \| `"text_only"`), `maxNodes` (`1..1000`), `maxDepth` (`1..64`) | Captures a window's semantic accessibility hierarchy and text buffer descriptors (`bufferRef`, `totalChars`, `capturedBytes`, `truncated`). Retains the capture under `observationId`. |
-| `access_read_text` | `observationId`, `bufferRef` | `targetId`, `cursor`, `maxBytes` (`4..16384`) | Reads an immutable UTF-8 text page from a retained capture buffer. Returns `text`, `range` (`start`, `end`), `nextCursor`, and `truncated`. |
-| `access_changes` | `windowRef` | `targetId`, `detail`, `baseline` (`observationId`), `waitMs` (`0..30000`) | Waits up to `waitMs` for native UI events, captures a fresh observation, and diffs against `baseline` (`added`, `removed`, `modified`, `textChanged`, `resyncRequired`). |
+| `access_inspect` | `windowRef` | `targetId`, `detail` (`"compact"` \| `"full"` \| `"interactive"` \| `"text_only"`), `maxNodes` (`1..1000`), `maxDepth` (`1..64`), `selector`, `role` | Captures a window's semantic accessibility hierarchy (optionally filtered to matching `selector`/`role` subtrees) and text buffer descriptors (`bufferRef`, `totalChars`, `capturedBytes`, `truncated`). Retains the capture under `observationId`. |
+| `access_read_text` | `observationId`, `bufferRef` | `targetId`, `cursor`, `maxBytes` (`4..16384`), `tail` (`bool`), `search` (`string`) | Reads an immutable UTF-8 text page from the start (`cursor`), the end (`tail: true`), or searches lines with `±2` context lines (`search: "<query>"`). |
+| `access_changes` | `windowRef` | `targetId`, `detail`, `baseline` (`observationId`), `waitMs` (`0..30000`), `includeTree` (`bool`) | Waits up to `waitMs` for native UI events, captures a fresh observation, and diffs against `baseline` (`added`, `removed`, `modified` with `changedFields`, `textChanged`, inline `textDeltas`, `resyncRequired`). Omits `observation.tree` when `resyncRequired == false` unless `includeTree: true`. |
 | `observe_desktop` | *(none)* | `target` (`"all"` or title/process/PID/hwnd), `verbosity` (`"glance"` \| `"compact"` \| `"full"` \| `"interactive"` \| `"text_only"`) | Single-call convenience tool combining window lookup, hierarchy inspection, and inline text page hydration. |
 
 ### 3.2 Low-Level Observation & Control Tools (Windows Native)

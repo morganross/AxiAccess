@@ -451,6 +451,10 @@ impl Observer {
             max_nodes: Option<usize>,
             #[serde(default)]
             max_depth: Option<usize>,
+            #[serde(default)]
+            selector: Option<String>,
+            #[serde(default)]
+            role: Option<String>,
         }
         let p: Params = decode(params)?;
         if !["compact", "full", "interactive", "text_only"].contains(&p.detail.as_str()) {
@@ -532,6 +536,8 @@ impl Observer {
         let text_digest=text_fingerprint(&data.tree,&buffers);
         let tree = if p.detail == "text_only" {
             Vec::new()
+        } else if p.selector.is_some() || p.role.is_some() {
+            engine::filter_tree(&data.tree, p.selector.as_deref(), p.role.as_deref())
         } else {
             data.tree.clone()
         };
@@ -688,6 +694,10 @@ impl Observer {
             cursor: Option<String>,
             #[serde(default)]
             max_bytes: Option<usize>,
+            #[serde(default)]
+            tail: Option<bool>,
+            #[serde(default)]
+            search: Option<String>,
         }
         let p: Params = decode(params)?;
         self.hydrate_text(owner, &p.observation_id, &p.buffer_ref)
@@ -721,17 +731,54 @@ impl Observer {
         let buffer = capture.buffers.get(&p.buffer_ref).ok_or_else(|| {
             AccessError::new("invalid_buffer", "Buffer does not belong to observation")
         })?;
-        let (page, next) = text::page(
-            &buffer.full_text,
-            offset,
-            p.max_bytes.unwrap_or(MAX_TEXT_PAGE),
-        )?;
-        let page = page.to_string();
+        let max_bytes = p.max_bytes.unwrap_or(MAX_TEXT_PAGE);
         let total = buffer.full_text.len();
         let truncated = buffer.truncated;
         let epoch = capture.epoch.clone();
         let observed = capture.created;
         let text_created = capture.text_created;
+        if let Some(query) = p.search.as_deref().filter(|s| !s.trim().is_empty()) {
+            let (excerpt, matches) = text::search_lines(&buffer.full_text, query, max_bytes);
+            return Ok(json!({
+                "senderId": self.sender_id,
+                "epoch": epoch,
+                "observationId": p.observation_id,
+                "bufferRef": p.buffer_ref,
+                "searchQuery": query,
+                "matchCount": matches.len(),
+                "matches": matches,
+                "text": excerpt,
+                "capturedBytes": total,
+                "observedAtMs": observed,
+                "textCapturedAtMs": text_created,
+                "nextCursor": Value::Null,
+                "truncated": truncated,
+                "immutable": true,
+                "untrustedAppData": true
+            }));
+        }
+        if p.tail == Some(true) && p.cursor.is_none() {
+            let (tail_slice, start_offset) = text::tail_page(&buffer.full_text, max_bytes);
+            let page = tail_slice.to_string();
+            return Ok(json!({
+                "senderId": self.sender_id,
+                "epoch": epoch,
+                "observationId": p.observation_id,
+                "bufferRef": p.buffer_ref,
+                "tail": true,
+                "text": page,
+                "range": {"unit": "utf8Bytes", "start": start_offset, "end": start_offset + page.len()},
+                "capturedBytes": total,
+                "observedAtMs": observed,
+                "textCapturedAtMs": text_created,
+                "nextCursor": Value::Null,
+                "truncated": truncated,
+                "immutable": true,
+                "untrustedAppData": true
+            }));
+        }
+        let (page, next) = text::page(&buffer.full_text, offset, max_bytes)?;
+        let page = page.to_string();
         let next_cursor = next.map(|offset| {
             let key = opaque_id();
             state.cursors.insert(
@@ -767,6 +814,8 @@ impl Observer {
             baseline: Option<String>,
             #[serde(default)]
             wait_ms: u64,
+            #[serde(default)]
+            include_tree: Option<bool>,
         }
         let p: Params = decode(params)?;
         if p.wait_ms > 30_000 {
@@ -804,7 +853,7 @@ impl Observer {
                 tokio::task::yield_now().await;
             }
         }
-        let fresh = self
+        let mut fresh = self
             .inspect(
                 owner,
                 json!({"windowRef":p.window_ref,"detail":p.detail}),
@@ -813,9 +862,10 @@ impl Observer {
             .await?;
         let id = fresh["observationId"]
             .as_str()
-            .expect("observation identity");
+            .expect("observation identity")
+            .to_string();
         let state = self.state.lock().await;
-        let after = state.captures.get(id).ok_or_else(||AccessError::new("expired_observation","Fresh change observation was evicted under concurrent load; capture again"))?;
+        let after = state.captures.get(&id).ok_or_else(||AccessError::new("expired_observation","Fresh change observation was evicted under concurrent load; capture again"))?;
         let after_map = changes::indexed(&after.tree);
         let before = p
             .baseline
@@ -832,8 +882,36 @@ impl Observer {
         let mut result = if let (Some(before), Some(after_map)) = (before, after_map) {
             if let Some(before_map) = changes::indexed(&before.tree) {
                 let mut d = changes::diff(&before_map, &after_map);
+                let text_changed = before.text_digest != after.text_digest;
                 d["resyncRequired"] = json!(false);
-                d["textChanged"] = json!(before.text_digest != after.text_digest);
+                d["textChanged"] = json!(text_changed);
+                if text_changed {
+                    let b_nids = buffer_native_ids(&before.tree, &before.buffers);
+                    let a_nids = buffer_native_ids(&after.tree, &after.buffers);
+                    let b_list: Vec<_> = before
+                        .buffers
+                        .iter()
+                        .map(|(k, b)| {
+                            (
+                                k.clone(),
+                                b_nids.get(k).cloned().unwrap_or_else(|| b.id.clone()),
+                                b,
+                            )
+                        })
+                        .collect();
+                    let a_list: Vec<_> = after
+                        .buffers
+                        .iter()
+                        .map(|(k, b)| {
+                            (
+                                k.clone(),
+                                a_nids.get(k).cloned().unwrap_or_else(|| b.id.clone()),
+                                b,
+                            )
+                        })
+                        .collect();
+                    d["textDeltas"] = json!(changes::compute_text_deltas(&b_list, &a_list));
+                }
                 d
             } else {
                 json!({"resyncRequired":true,"reason":"native_identity_unavailable"})
@@ -841,6 +919,13 @@ impl Observer {
         } else {
             json!({"resyncRequired":true,"reason":"baseline_missing_expired_partial_or_different_scope"})
         };
+        let resync = result["resyncRequired"].as_bool().unwrap_or(true);
+        if !resync && p.include_tree != Some(true) {
+            if let Some(obj) = fresh.as_object_mut() {
+                obj.remove("tree");
+                obj.insert("treeOmittedInDelta".into(), json!(true));
+            }
+        }
         result["baseline"] = json!(id);
         result["observation"] = fresh;
         if serde_json::to_vec(&result)
@@ -983,5 +1068,69 @@ mod tests {
     #[test]fn equal_prefix_buffers_cannot_exchange_history_undetected(){
         let node=|id:&str|serde_json::from_value::<engine::TreeNode>(json!({"id":id,"native_id":format!("native-{id}"),"role":"document","name":"same","depth":0,"offscreen":false,"focused":false,"enabled":true,"has_text":true,"text_source":"fixture","total_chars":201,"offscreen_chars":0,"preview":"same","children":[]})).unwrap();
         let tree=vec![node("a"),node("b")];let mut a=buffer();a.id="a".into();a.full_text=format!("{}A","x".repeat(200));let mut b=a.clone();b.id="b".into();b.full_text=format!("{}B","x".repeat(200));let before=HashMap::from([("first".into(),a.clone()),("second".into(),b.clone())]);std::mem::swap(&mut a.full_text,&mut b.full_text);let after=HashMap::from([("first".into(),a),("second".into(),b)]);assert_ne!(text_fingerprint(&tree,&before),text_fingerprint(&tree,&after));
+    }
+    #[tokio::test]
+    async fn read_text_supports_tail_and_search_and_filter_tree_prunes() {
+        let observer = Observer::new("sender".into());
+        let mut b = buffer();
+        b.full_text = "alpha\nbeta\ngamma error_code=42\ndelta\nepsilon\n".into();
+        {
+            let mut state = observer.state.lock().await;
+            state.captures.insert(
+                "cap".into(),
+                Capture {
+                    owner: "alice".into(),
+                    window_ref: "w".into(),
+                    detail: "full".into(),
+                    epoch: "epoch".into(),
+                    tree: vec![],
+                    buffers: HashMap::from([("buf".into(), b)]),
+                    text_digest: String::new(),
+                    event_revision: 0,
+                    bytes: 100,
+                    created: 1,
+                    complete: true,
+                    native_target: String::new(),
+                    limits: Limits::default(),
+                    text_created: Some(1),
+                },
+            );
+        }
+        let tail_res = observer
+            .read_text(
+                "alice",
+                json!({"observationId":"cap","bufferRef":"buf","tail":true,"maxBytes":15}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tail_res["tail"], true);
+        assert_eq!(tail_res["text"], "delta\nepsilon\n");
+
+        let search_res = observer
+            .read_text(
+                "alice",
+                json!({"observationId":"cap","bufferRef":"buf","search":"error_code","maxBytes":256}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(search_res["matchCount"], 1);
+        assert!(search_res["text"].as_str().unwrap().contains("error_code=42"));
+
+        let tree: Vec<engine::TreeNode> = serde_json::from_value(json!([
+            {
+                "id": "@e1",
+                "role": "window",
+                "name": "Main",
+                "children": [
+                    {"id": "@e2", "role": "button", "name": "Cancel", "children": []},
+                    {"id": "@e3", "role": "button", "name": "Submit Order", "children": []}
+                ]
+            }
+        ]))
+        .unwrap();
+        let filtered = engine::filter_tree(&tree, Some("Submit"), Some("button"));
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].children.len(), 1);
+        assert_eq!(filtered[0].children[0].name, "Submit Order");
     }
 }

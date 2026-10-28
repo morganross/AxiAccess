@@ -79,15 +79,19 @@ Adapters inspect native password/protected attributes (`UIA_IsPasswordPropertyId
 
 Implemented in [`src/observe.rs`](../src/observe.rs), [`src/text.rs`](../src/text.rs), and [`src/changes.rs`](../src/changes.rs).
 
-### Immutable UTF-8 Text Pagination (`read_text` / `access_read_text`)
+### Immutable UTF-8 Text Pagination, Tail Reading & Line Search (`read_text` / `access_read_text`)
 - Each `inspect` call stores up to `MAX_CAPTURE_BYTES` (2 MiB total, 64 KiB per buffer) in a client-scoped LRU cache (`MAX_RETAINED_BYTES` = 16 MiB, `MAX_CAPTURE_COUNT` = 32 captures).
 - When `inspect` is called with `detail: "compact"` or `"interactive"`, full buffer text is deferred (`textDeferred: true`) and hydrated on-demand on the first `read_text` call for that `observationId` + `bufferRef`, verifying that the underlying `native_id` has not disappeared.
-- `read_text` slices UTF-8 strings on valid char boundaries (`src/text.rs`) up to `MAX_TEXT_PAGE` (16,384 bytes) per page and returns an opaque `nextCursor` bound to `(owner, observationId, bufferRef, byteOffset)`.
+- **Subtree & Role Pruning (`selector` / `role` in `inspect`):** `inspect` accepts optional `selector` (matching `id`, `native_id`, `name`, or `preview`) and `role` filters (`engine::filter_tree`) to return only matching branches and their ancestors/descendants in the response while preserving the full tree in the retained `Capture`. Default `false`/`0`/`""`/`[]` fields on `TreeNode` are omitted from JSON serialization to reduce token overhead by ~50%.
+- **Forward Pagination (`cursor`):** `read_text` slices UTF-8 strings on valid char boundaries (`src/text.rs`) up to `MAX_TEXT_PAGE` (16,384 bytes) per page and returns an opaque `nextCursor` bound to `(owner, observationId, bufferRef, byteOffset)`.
+- **Tail Reading (`tail: true`):** Reads the last `maxBytes` from the end of the buffer (`text::tail_page`), snapping cleanly to a UTF-8 and line boundary so agents can read the bottom of terminal logs or chat histories in one round-trip.
+- **Server-Side Line Search (`search: "<query>"`):** Performs a case-insensitive substring search across the retained buffer (`text::search_lines`), returning `matchCount`, `matches[]` (`lineNumber`, `byteOffset`, `line`), and a formatted excerpt with `±2` lines of context.
 
-### Event-Driven Structural & Text Diffing (`changes` / `access_changes`)
-- Accepts `windowRef`, `detail`, optional `baseline` (`observationId`), and optional `waitMs` (`0..30000`).
+### Event-Driven Structural & Inline Text Diffing (`changes` / `access_changes`)
+- Accepts `windowRef`, `detail`, optional `baseline` (`observationId`), optional `waitMs` (`0..30000`), and optional `includeTree` (`bool`).
 - If `waitMs > 0` and `baseline` is valid, waits in 250 ms increments for the native OS event revision counter (`native_event_revision`) to advance before capturing the new snapshot.
-- Computes symmetric tree diffs (`added`, `removed`, `modified`—including parent/sibling order changes and control state transitions) plus whole-buffer SHA-256 `textChanged` detection (`src/changes.rs`).
+- Computes symmetric tree diffs (`added`, `removed`, `modified`—including `changedFields` listing the exact modified properties on each node) plus whole-buffer SHA-256 `textChanged` detection and bounded inline `textDeltas` (`changeType: "appended" | "modified" | "added_buffer"`, up to 4 KiB per buffer) (`src/changes.rs`).
+- **Delta Tree Omission (`treeOmittedInDelta`):** When `resyncRequired == false`, `observation.tree` is omitted by default (`treeOmittedInDelta: true`) unless `includeTree: true` is passed, cutting incremental diff payload sizes by ~90%.
 
 ---
 
@@ -351,9 +355,9 @@ All requests to `POST /v1/read` (TLS) or `axiaccess sender --stdio` use the enve
 | `access_targets` | *(Handled in MCP layer)* | `{}` |
 | `access_capabilities` | `"capabilities"` | `{}` |
 | `access_windows` | `"windows"` | `{"maxWindows": 100}` |
-| `access_inspect` | `"inspect"` | `{"windowRef": "w-...", "detail": "compact", "maxNodes": 250, "maxDepth": 32}` |
-| `access_read_text` | `"read_text"` | `{"observationId": "...", "bufferRef": "...", "cursor": null, "maxBytes": 16384}` |
-| `access_changes` | `"changes"` | `{"windowRef": "w-...", "detail": "compact", "baseline": "...", "waitMs": 1000}` |
+| `access_inspect` | `"inspect"` | `{"windowRef": "w-...", "detail": "compact", "maxNodes": 250, "maxDepth": 32, "selector": null, "role": null}` |
+| `access_read_text` | `"read_text"` | `{"observationId": "...", "bufferRef": "...", "cursor": null, "maxBytes": 16384, "tail": false, "search": null}` |
+| `access_changes` | `"changes"` | `{"windowRef": "w-...", "detail": "compact", "baseline": "...", "waitMs": 1000, "includeTree": false}` |
 | `observe_desktop` | *(Composite: `windows` + `inspect` + `read_text`)* | `{"target": "all", "verbosity": "glance"}` |
 | `control_window` | `"control"` | `{"target": "Notepad", "action": "send_keys", "selector": null, "role": null, "value": "Hello{ENTER}", "x": null, "y": null}` |
 | `ocr_window` | `"ocr"` | `{"target": "focused"}` |

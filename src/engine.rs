@@ -66,24 +66,35 @@ pub struct TextBufferInfo {
 pub struct TreeNode {
     pub id: String,
     pub role: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    pub depth: usize,
-    pub offscreen: bool,
-    pub focused: bool,
-    pub enabled: bool,
-    pub has_text: bool,
-    pub text_source: Option<String>,
-    pub total_chars: usize,
-    pub offscreen_chars: usize,
-    pub preview: String,
-    pub children: Vec<TreeNode>,
     #[serde(default)]
+    pub depth: usize,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub offscreen: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub focused: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub has_text: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_source: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub total_chars: usize,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offscreen_chars: usize,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preview: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<TreeNode>,
+    #[serde(default, skip_serializing_if = "is_false")]
     pub protected: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_role: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_empty_value")]
     pub states: serde_json::Value,
 }
 
@@ -136,6 +147,76 @@ pub struct LlmFormatResponse {
 
 fn default_true() -> bool {
     true
+}
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+fn is_true(v: &bool) -> bool {
+    *v
+}
+fn is_zero(v: &usize) -> bool {
+    *v == 0
+}
+fn is_empty_value(v: &serde_json::Value) -> bool {
+    v.is_null() || v.as_object().is_some_and(|o| o.is_empty())
+}
+
+/// Filter/prune a semantic tree by optional selector (`id`, `native_id`, or `name` substring)
+/// and/or `role` filter. When a node matches, its entire subtree is preserved.
+pub fn filter_tree(
+    nodes: &[TreeNode],
+    selector: Option<&str>,
+    role: Option<&str>,
+) -> Vec<TreeNode> {
+    let sel_lower = selector.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    let role_lower = role.map(|r| r.trim().to_lowercase()).filter(|r| !r.is_empty());
+    if sel_lower.is_none() && role_lower.is_none() {
+        return nodes.to_vec();
+    }
+    fn matches_node(n: &TreeNode, sel: Option<&str>, role: Option<&str>) -> bool {
+        let sel_ok = match sel {
+            Some(s) => {
+                n.id.eq_ignore_ascii_case(s)
+                    || n.native_id
+                        .as_deref()
+                        .is_some_and(|nid| nid.eq_ignore_ascii_case(s))
+                    || n.name.to_lowercase().contains(s)
+                    || n.preview.to_lowercase().contains(s)
+            }
+            None => true,
+        };
+        let role_ok = match role {
+            Some(r) => {
+                n.role.eq_ignore_ascii_case(r)
+                    || n.native_role
+                        .as_deref()
+                        .is_some_and(|nr| nr.to_lowercase().contains(r))
+            }
+            None => true,
+        };
+        sel_ok && role_ok
+    }
+    fn walk(
+        nodes: &[TreeNode],
+        sel: Option<&str>,
+        role: Option<&str>,
+    ) -> Vec<TreeNode> {
+        let mut out = Vec::new();
+        for n in nodes {
+            if matches_node(n, sel, role) {
+                out.push(n.clone());
+            } else {
+                let filtered_children = walk(&n.children, sel, role);
+                if !filtered_children.is_empty() {
+                    let mut branch = n.clone();
+                    branch.children = filtered_children;
+                    out.push(branch);
+                }
+            }
+        }
+        out
+    }
+    walk(nodes, sel_lower.as_deref(), role_lower.as_deref())
 }
 
 /// Compatibility query; observation never changes session-wide accessibility settings.
