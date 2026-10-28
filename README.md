@@ -171,25 +171,35 @@ axiaccess sandbox list --name AxiAccessSandbox
 
 ---
 
-## MCP Tools (Standalone `axiaccess mcp` & AxiOwl IDE)
+## MCP Tools & Native Resources (Standalone `axiaccess mcp` & AxiOwl IDE)
 
 Run `axiaccess mcp` (or `axiaccess --mcp`) as a stdio MCP server in Claude Code, Cursor, Codex, Antigravity, Gemini, Copilot, or OpenCode:
+
+### Tools
 
 | Tool | Category | Capability |
 | --- | --- | --- |
 | `access_targets` | Observation | Configured permitted machines (`local` in standalone MCP; local/remote/VM in IDE) |
 | `access_capabilities` | Observation | Native permission/session/event coverage and protocol resource limits |
 | `access_windows` | Observation | Bounded window inventory and lifetime-bound `windowRef` handles |
-| `access_inspect` | Observation | Selected window/subtree hierarchy (`compact`, `full`, `interactive`, `text_only`) and `bufferRef` descriptors |
-| `access_read_text` | Observation | Observation/buffer-bound immutable 16 KiB UTF-8 text page and `nextCursor` continuation |
-| `access_changes` | Observation | Scoped `added`/`removed`/`modified` records, `textChanged` digest check, and optional native event wait (`0..30000` ms) |
-| `observe_desktop` | Observation | Single-call composite observation (`glance`, `compact`, `full`, `interactive`, `text_only`) |
+| `access_inspect` | Observation | Selected window/subtree hierarchy (`compact`, `full`, `interactive`, `text_only`), CSS `selector`/`role` filtering, and `bufferRef` descriptors |
+| `access_read_text` | Observation | Observation/buffer-bound immutable 16 KiB UTF-8 text page, optional `tail` / `search`, and `nextCursor` continuation |
+| `access_changes` | Observation | Scoped `added`/`removed`/`modified` records, `textChanged` digest check, optional `includeTree` snapshot, and bounded native event wait (`0..30000` ms) |
+| `observe_desktop` | Observation | Single-call composite observation (`glance`, `compact`, `full`, `interactive`, `text_only`) with optional `targetId`, `selector`, `role`, `tail`, and `search` |
 | `control_window` | Low-Level Control | Focus-free background control via UIA Patterns (`invoke`, `set_value`, `toggle`, `select`, `expand`, `collapse`, `scroll`) and Win32 `SendMessageW`/`PostMessageW` (`send_keys`, `click_xy`, `menu`, `window_state`) |
 | `ocr_window` | Low-Level Observation | Occluded DWM `PrintWindow(PW_RENDERFULLCONTENT)` capture + hardware `Windows.Media.Ocr` extraction with word/line `[left, top, width, height]` bounding boxes |
 | `inspect_telemetry` | Low-Level Observation | Kernel Wait Chain Traversal (`OpenThreadWaitChainSession` / `GetThreadWaitChain`), deadlock & hang diagnostics, child process tree, I/O & memory counters, GDI/USER handles, TCP sockets (`GetExtendedTcpTable`), and Win32 menu items |
 | `discover_debug_channels` | Low-Level Observation | Discover live app debug & IPC channels: Chrome DevTools Protocol (CDP) WebSocket targets (`/json/list`), `.NET` diagnostic named pipes (`\\.\pipe\dotnet-diagnostic-*`), and COM Running Object Table (`IRunningObjectTable`) monikers |
 | `console_buffer` | Low-Level I/O | Direct Win32 Console Screen Buffer reader (`ReadConsoleOutputCharacterW` on `CONOUT$`) and headless keystroke injector (`WriteConsoleInputW` on `CONIN$`) |
 | `sandbox_desktop` | Low-Level Isolation | Isolated Kernel Sandbox Desktop manager (`CreateDesktopW` / `OpenDesktopW` / `EnumDesktopsW` / `CreateProcessW` on off-screen `HDESK`) |
+
+### Native Resources
+
+| URI | Name | Description | MIME Type |
+| --- | --- | --- | --- |
+| `axiaccess://docs/llms` | LLM & Agent Playbook | Agent workflows, multi-step patterns, prompt guidelines, and tool mapping from `LLMS.md` | `text/markdown` |
+| `axiaccess://docs/api-reference` | API Reference | Complete reference for all 15 subcommands, 13 MCP tools, wire protocol schemas, and error codes | `text/markdown` |
+| `axiaccess://status/capabilities` | Server Status & Capabilities | Live session permissions, desktop status, limits, and supported operations | `application/json` |
 
 See **[`LLMS.md`](LLMS.md)** for complete agent decision trees and workflow playbooks.
 

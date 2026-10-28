@@ -128,6 +128,8 @@ enum Commands {
         /// Output raw JSON
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        remote: RemoteArgs,
     },
     /// Occluded DWM window capture (PrintWindow PW_RENDERFULLCONTENT) + hardware Windows.Media.Ocr
     Ocr {
@@ -137,6 +139,8 @@ enum Commands {
         /// Output raw JSON
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        remote: RemoteArgs,
     },
     /// Kernel Wait Chain Traversal (WCT), deadlock/hang diagnostics, child tree, I/O & TCP sockets
     Telemetry {
@@ -146,12 +150,16 @@ enum Commands {
         /// Output raw JSON
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        remote: RemoteArgs,
     },
     /// Discover live app debug & IPC channels (CDP WebSocket ports, .NET diagnostic pipes, COM ROT)
     DebugChannels {
         /// Output raw JSON
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        remote: RemoteArgs,
     },
     /// Direct Win32 Console Screen Buffer reader & headless keystroke injector (ReadConsoleOutputCharacterW / WriteConsoleInputW)
     Console {
@@ -170,6 +178,8 @@ enum Commands {
         /// Output raw JSON
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        remote: RemoteArgs,
     },
     /// Isolated Kernel Sandbox Desktop manager (CreateDesktopW / OpenDesktopW / EnumDesktopsW / CreateProcessW)
     Sandbox {
@@ -185,7 +195,84 @@ enum Commands {
         /// Output raw JSON
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        remote: RemoteArgs,
     },
+}
+
+#[derive(clap::Args, Clone, Default)]
+struct RemoteArgs {
+    /// Remote sender HTTPS URL (e.g. https://192.168.56.10:8765)
+    #[arg(long)]
+    url: Option<String>,
+    /// Pinned certificate PEM path (required when connecting over --url or --ssh)
+    #[arg(long)]
+    certificate: Option<PathBuf>,
+    /// Paired client ID
+    #[arg(long, default_value = "owner")]
+    client_id: String,
+    /// Environment variable containing the paired bearer token
+    #[arg(long, default_value = "AXIACCESS_TOKEN")]
+    token_env: String,
+    /// Remote SSH user@host to tunnel to the sender TLS endpoint
+    #[arg(long)]
+    ssh: Option<String>,
+    /// SSH port when using --ssh
+    #[arg(long)]
+    ssh_port: Option<u16>,
+    /// SSH private key identity file when using --ssh
+    #[arg(long)]
+    identity: Option<PathBuf>,
+    /// Remote sender loopback port when tunneling with --ssh
+    #[arg(long, default_value_t = 8765)]
+    sender_port: u16,
+    /// Client observation scope
+    #[arg(long)]
+    scope: Option<String>,
+}
+
+async fn dispatch_op(
+    remote: &RemoteArgs,
+    operation: &str,
+    params: Value,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    if remote.ssh.is_some() && remote.url.is_some() {
+        return Err("Choose --ssh or --url, not both".into());
+    }
+    if remote.ssh.is_none() && remote.url.is_none() {
+        let observer = Observer::new(opaque_id());
+        let res = observer.execute("cli", operation, params).await?;
+        return Ok(res);
+    }
+    let (_tunnel, url) = if let Some(host) = &remote.ssh {
+        let (child, url) = transport::client::ssh_tunnel(
+            host,
+            remote.ssh_port,
+            remote.identity.as_deref(),
+            remote.sender_port,
+        )
+        .await?;
+        (Some(child), url)
+    } else {
+        (None, remote.url.clone().unwrap())
+    };
+    let cert = std::fs::read(remote.certificate.as_ref().ok_or(
+        "Remote operations require --certificate PEM path from sender pairing",
+    )?)?;
+    let token = std::env::var(&remote.token_env)
+        .map_err(|_| format!("Remote token environment '{}' is absent", remote.token_env))?;
+    let scope = remote.scope.clone().unwrap_or_else(opaque_id);
+    let value = transport::client::remote_scoped(
+        &url,
+        &cert,
+        &remote.client_id,
+        &token,
+        &scope,
+        operation,
+        params,
+    )
+    .await?;
+    Ok(value)
 }
 async fn query(
     target: String,
@@ -398,17 +485,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             x,
             y,
             json: as_json,
+            remote,
         }) => {
-            let req = axiaccess::lowlevel::ControlActionRequest {
-                target,
-                action,
-                selector,
-                role,
-                value,
-                x,
-                y,
-            };
-            let res = axiaccess::lowlevel::control_window(req)?;
+            let params = json!({
+                "target": target,
+                "action": action,
+                "selector": selector,
+                "role": role,
+                "value": value,
+                "x": x,
+                "y": y
+            });
+            let val = dispatch_op(&remote, "control", params).await?;
+            let res: axiaccess::lowlevel::ControlActionResponse = serde_json::from_value(val)?;
             if as_json || cli.json {
                 println!("{}", serde_json::to_string_pretty(&res)?);
             } else {
@@ -429,8 +518,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Ocr {
             target,
             json: as_json,
+            remote,
         }) => {
-            let res = axiaccess::lowlevel::ocr_window(&target)?;
+            let val = dispatch_op(&remote, "ocr", json!({"target": target})).await?;
+            let res: axiaccess::lowlevel::OcrWindowResponse = serde_json::from_value(val)?;
             if as_json || cli.json {
                 println!("{}", serde_json::to_string_pretty(&res)?);
             } else {
@@ -455,8 +546,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Telemetry {
             target,
             json: as_json,
+            remote,
         }) => {
-            let res = axiaccess::lowlevel::inspect_telemetry(&target)?;
+            let val = dispatch_op(&remote, "telemetry", json!({"target": target})).await?;
+            let res: axiaccess::lowlevel::ProcessTelemetryResponse = serde_json::from_value(val)?;
             if as_json || cli.json {
                 println!("{}", serde_json::to_string_pretty(&res)?);
             } else {
@@ -487,8 +580,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
-        Some(Commands::DebugChannels { json: as_json }) => {
-            let res = axiaccess::lowlevel::discover_debug_channels();
+        Some(Commands::DebugChannels {
+            json: as_json,
+            remote,
+        }) => {
+            let val = dispatch_op(&remote, "debug_channels", json!({})).await?;
+            let res: axiaccess::lowlevel::DebugChannelsResponse = serde_json::from_value(val)?;
             if as_json || cli.json {
                 println!("{}", serde_json::to_string_pretty(&res)?);
             } else {
@@ -518,18 +615,30 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             target,
             write,
             enter,
-            max_lines: _,
+            max_lines,
             json: as_json,
+            remote,
         }) => {
             if let Some(input_text) = write {
-                let res = axiaccess::lowlevel::write_console_input(&target, &input_text, enter)?;
+                let val = dispatch_op(
+                    &remote,
+                    "console_write",
+                    json!({"target": target, "input": input_text, "appendEnter": enter}),
+                )
+                .await?;
                 if as_json || cli.json {
-                    println!("{}", serde_json::to_string_pretty(&res)?);
+                    println!("{}", serde_json::to_string_pretty(&val)?);
                 } else {
-                    println!("{}", res);
+                    println!("{}", val);
                 }
             } else {
-                let res = axiaccess::lowlevel::read_console_buffer(&target)?;
+                let val = dispatch_op(
+                    &remote,
+                    "console_read",
+                    json!({"target": target, "maxLines": max_lines}),
+                )
+                .await?;
+                let res: axiaccess::lowlevel::ConsoleBufferResponse = serde_json::from_value(val)?;
                 if as_json || cli.json {
                     println!("{}", serde_json::to_string_pretty(&res)?);
                 } else {
@@ -553,10 +662,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             name,
             command,
             json: as_json,
+            remote,
         }) => {
             let desk = name.as_deref().unwrap_or("AxiAccessSandbox");
-            let res =
-                axiaccess::lowlevel::manage_sandbox_desktop(&action, desk, command.as_deref())?;
+            let val = dispatch_op(
+                &remote,
+                "sandbox",
+                json!({"action": action, "desktop_name": desk, "command": command}),
+            )
+            .await?;
+            let res: axiaccess::lowlevel::SandboxDesktopResponse = serde_json::from_value(val)?;
             if as_json || cli.json {
                 println!("{}", serde_json::to_string_pretty(&res)?);
             } else {

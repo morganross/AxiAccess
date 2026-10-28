@@ -326,12 +326,12 @@ Global Options:
 | `mcp` | `axiaccess mcp` | Run the RMCP 3.5.1 stdio server exposing all 13 AxiAccess tools. |
 | `query` | `axiaccess query [TARGET] [-v <VERBOSITY>] [--json]` | Observe local desktop (`all` or specific window) in Markdown or JSON. |
 | `reader` | `axiaccess reader [TARGET] [-f xml\|markdown\|json\|diff] [--url <HTTPS_URL>] [--ssh <USER@HOST>] [--certificate <PEM>] [--client-id <ID>] [--token-env <ENV>] [--diff] [--baseline <ID>] [--scope <SCOPE>]` | Structured LLM reader supporting local, remote TLS, and SSH-tunneled targets with automatic text pagination and diffing. |
-| `control` | `axiaccess control <TARGET> <ACTION> [-s <SELECTOR>] [-r <ROLE>] [-V <VALUE>] [-x <X>] [-y <Y>] [--json]` | Focus-free background window/control action (`invoke`, `set_value`, `send_keys`, `click_xy`, `toggle`, `select`, `expand`, `collapse`, `scroll`, `menu`, `window_state`). |
-| `ocr` | `axiaccess ocr [TARGET] [--json]` | Occluded DWM `PrintWindow(PW_RENDERFULLCONTENT)` capture + `Windows.Media.Ocr` extraction. |
-| `telemetry` | `axiaccess telemetry [TARGET] [--json]` | Kernel Wait Chain Traversal (`GetThreadWaitChain`), deadlock/hang check, child tree, memory/I/O, TCP sockets, and menus. |
-| `debug-channels` | `axiaccess debug-channels [--json]` | Discover live CDP WebSocket endpoints, `.NET` diagnostic pipes, and COM ROT objects. |
-| `console` | `axiaccess console [TARGET] [-w <TEXT>] [--enter] [-m <MAX_LINES>] [--json]` | Read Win32 Console Screen Buffer (`CONOUT$`) or inject headless keystrokes (`CONIN$`). |
-| `sandbox` | `axiaccess sandbox [list\|create\|spawn] [-n <NAME>] [-c <COMMAND>] [--json]` | Manage isolated off-screen kernel desktops (`winsta0\AxiAccessSandbox`). |
+| `control` | `axiaccess control <TARGET> <ACTION> [-s <SELECTOR>] [-r <ROLE>] [-V <VALUE>] [-x <X>] [-y <Y>] [--url <URL>] [--ssh <USER@HOST>] [--json]` | Focus-free background window/control action (`invoke`, `set_value`, `send_keys`, `click_xy`, `toggle`, `select`, `expand`, `collapse`, `scroll`, `menu`, `window_state`) locally or over remote TLS/SSH. |
+| `ocr` | `axiaccess ocr [TARGET] [--url <URL>] [--ssh <USER@HOST>] [--json]` | Occluded DWM `PrintWindow(PW_RENDERFULLCONTENT)` capture + `Windows.Media.Ocr` extraction locally or remotely. |
+| `telemetry` | `axiaccess telemetry [TARGET] [--url <URL>] [--ssh <USER@HOST>] [--json]` | Kernel Wait Chain Traversal (`GetThreadWaitChain`), deadlock/hang check, child tree, memory/I/O, TCP sockets, and menus. |
+| `debug-channels` | `axiaccess debug-channels [--url <URL>] [--ssh <USER@HOST>] [--json]` | Discover live CDP WebSocket endpoints, `.NET` diagnostic pipes, and COM ROT objects locally or remotely. |
+| `console` | `axiaccess console [TARGET] [-w <TEXT>] [--enter] [-m <MAX_LINES>] [--url <URL>] [--ssh <USER@HOST>] [--json]` | Read Win32 Console Screen Buffer (`CONOUT$`) or inject headless keystrokes (`CONIN$`) locally or remotely. |
+| `sandbox` | `axiaccess sandbox [list\|create\|spawn] [-n <NAME>] [-c <COMMAND>] [--url <URL>] [--ssh <USER@HOST>] [--json]` | Manage isolated off-screen kernel desktops (`winsta0\AxiAccessSandbox`) locally or remotely. |
 
 ---
 
@@ -358,7 +358,17 @@ All requests to `POST /v1/read` (TLS) or `axiaccess sender --stdio` use the enve
 | `access_inspect` | `"inspect"` | `{"windowRef": "w-...", "detail": "compact", "maxNodes": 250, "maxDepth": 32, "selector": null, "role": null}` |
 | `access_read_text` | `"read_text"` | `{"observationId": "...", "bufferRef": "...", "cursor": null, "maxBytes": 16384, "tail": false, "search": null}` |
 | `access_changes` | `"changes"` | `{"windowRef": "w-...", "detail": "compact", "baseline": "...", "waitMs": 1000, "includeTree": false}` |
-| `observe_desktop` | *(Composite: `windows` + `inspect` + `read_text`)* | `{"target": "all", "verbosity": "glance"}` |
+| `observe_desktop` | *(Composite: `windows` + `inspect` + `read_text`)* | `{"target": "all", "verbosity": "glance", "selector": null, "role": null, "tail": false, "search": null}` |
+
+### Native MCP Resources (`resources/list` & `resources/read`)
+
+The RMCP 3.5.1 server in `axiaccess mcp` exposes native documentation and capability resources directly to connected LLMs and MCP clients:
+
+| Resource URI | MIME Type | Description |
+| --- | --- | --- |
+| `axiaccess://docs/llms` | `text/markdown` | Complete LLM & Coding Agent Playbook (`LLMS.md`). |
+| `axiaccess://docs/api-reference` | `text/markdown` | Complete technical specification of all 9 capabilities, 15 CLI subcommands, 13 MCP tools, and 12 wire operations. |
+| `axiaccess://status/capabilities` | `application/json` | Live system capabilities, permission state, native event status, and protocol bounds. |
 | `control_window` | `"control"` | `{"target": "Notepad", "action": "send_keys", "selector": null, "role": null, "value": "Hello{ENTER}", "x": null, "y": null}` |
 | `ocr_window` | `"ocr"` | `{"target": "focused"}` |
 | `inspect_telemetry` | `"telemetry"` | `{"target": "focused"}` |

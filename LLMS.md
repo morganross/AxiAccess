@@ -163,7 +163,7 @@ When you need to launch and automate GUI applications completely invisibly (zero
 | `access_inspect` | `windowRef` | `targetId`, `detail` (`"compact"` \| `"full"` \| `"interactive"` \| `"text_only"`), `maxNodes` (`1..1000`), `maxDepth` (`1..64`), `selector`, `role` | Captures a window's semantic accessibility hierarchy (optionally filtered to matching `selector`/`role` subtrees) and text buffer descriptors (`bufferRef`, `totalChars`, `capturedBytes`, `truncated`). Retains the capture under `observationId`. |
 | `access_read_text` | `observationId`, `bufferRef` | `targetId`, `cursor`, `maxBytes` (`4..16384`), `tail` (`bool`), `search` (`string`) | Reads an immutable UTF-8 text page from the start (`cursor`), the end (`tail: true`), or searches lines with `±2` context lines (`search: "<query>"`). |
 | `access_changes` | `windowRef` | `targetId`, `detail`, `baseline` (`observationId`), `waitMs` (`0..30000`), `includeTree` (`bool`) | Waits up to `waitMs` for native UI events, captures a fresh observation, and diffs against `baseline` (`added`, `removed`, `modified` with `changedFields`, `textChanged`, inline `textDeltas`, `resyncRequired`). Omits `observation.tree` when `resyncRequired == false` unless `includeTree: true`. |
-| `observe_desktop` | *(none)* | `target` (`"all"` or title/process/PID/hwnd), `verbosity` (`"glance"` \| `"compact"` \| `"full"` \| `"interactive"` \| `"text_only"`) | Single-call convenience tool combining window lookup, hierarchy inspection, and inline text page hydration. |
+| `observe_desktop` | *(none)* | `target` (`"all"` or title/process/PID/hwnd), `verbosity` (`"glance"` \| `"compact"` \| `"full"` \| `"interactive"` \| `"text_only"`), `selector`, `role`, `tail` (`bool`), `search` (`string`), `targetId` | Single-call convenience tool combining window lookup, hierarchy inspection, subtree pruning, and inline text page hydration/tail/search. |
 
 ### 3.2 Low-Level Observation & Control Tools (Windows Native)
 
@@ -175,6 +175,16 @@ When you need to launch and automate GUI applications completely invisibly (zero
 | `discover_debug_channels` | *(none)* | `targetId` | Scans loopback TCP sockets for Chrome DevTools Protocol (`/json/list`), `.NET` diagnostic pipes (`\\.\pipe\dotnet-diagnostic-*`), and COM Running Object Table (`IRunningObjectTable`) monikers. |
 | `console_buffer` | `target` | `targetId`, `action` (`"read"` \| `"write"`), `input`, `append_enter` (`bool`), `max_lines` (`1..5000`) | Reads 2D console screen buffer (`CONOUT$`) or injects headless keystroke records (`CONIN$`). |
 | `sandbox_desktop` | `action` (`"list"` \| `"create"` \| `"spawn"`) | `targetId`, `desktop_name`, `command` | Creates, lists, or spawns GUI applications on an isolated off-screen kernel desktop (`HDESK`). |
+
+### 3.3 Built-In Native MCP Resources (`resources/list` & `resources/read`)
+
+The standalone `axiaccess mcp` server exposes native documentation and runtime capability resources directly into your agent context:
+
+| Resource URI | MIME Type | Description |
+| --- | --- | --- |
+| `axiaccess://docs/llms` | `text/markdown` | Complete LLM & Coding Agent Playbook (`LLMS.md`). Read this resource to access the decision matrix, workflow playbooks, and tool references without file searching. |
+| `axiaccess://docs/api-reference` | `text/markdown` | Complete technical specification of all 9 capabilities, 15 CLI subcommands, 13 MCP tools, and 12 wire operations. |
+| `axiaccess://status/capabilities` | `application/json` | Live system capabilities, permission state, native event status, and protocol bounds. |
 
 ---
 
